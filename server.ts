@@ -22,7 +22,14 @@ const IS_WINDOWS = process.platform === 'win32';
 const YTDLP_RELEASE_URL = IS_WINDOWS
   ? 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe'
   : 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp';
-const FFMPEG_WIN_ZIP_URL = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip';
+// FFmpeg Windows builds, tried in order until one downloads and runs.
+// The first is the small "essentials" build; the others are full builds
+// from GitHub used as automatic fallbacks.
+const FFMPEG_WIN_ZIP_URLS = [
+  'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip',
+  'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip',
+  'https://github.com/GyanD/codexffmpeg/releases/download/7.1.1/ffmpeg-7.1.1-essentials_build.zip',
+];
 const DENO_WIN_ZIP_URL =
   'https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip';
 
@@ -45,11 +52,11 @@ let cachedYtDlpPath: string | null = null;
 let cachedFfmpegPath: string | null = null;
 let cachedDenoPath: string | null = null;
 let cachedFfprobePath: string | null = null;
-// Runtime preparation is attempted only once per process: a failed
-// download of Deno/FFmpeg is remembered instead of being retried (and
-// re-downloaded) on every download attempt.
+// A failed Deno download is remembered for the process (Deno is
+// optional). FFmpeg is mandatory, so it is NOT memoized: every download
+// attempt re-checks it, deletes a corrupt copy and reinstalls it
+// automatically when needed.
 let denoDownloadFailed = false;
-let ffmpegDownloadFailed = false;
 
 function getRuntimeBinDir(): string {
   if (activeBinDir) return activeBinDir;
@@ -83,6 +90,17 @@ async function ensureYtDlp(): Promise<string> {
 
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
+      // A tiny yt-dlp file is a truncated leftover of an interrupted
+      // download (the real binary is ~17 MB): delete it and reinstall
+      // instead of failing on every attempt.
+      try {
+        if (fs.statSync(candidate).size < 1_000_000) {
+          await fs.promises.rm(candidate, { force: true });
+          continue;
+        }
+      } catch {
+        // if it cannot be inspected, fall through and try to use it
+      }
       if (!IS_WINDOWS) {
         try {
           fs.chmodSync(candidate, 0o755);
@@ -99,7 +117,7 @@ async function ensureYtDlp(): Promise<string> {
   const targetBin = path.join(binDir, binName);
   const resp = await fetch(YTDLP_RELEASE_URL, {
     redirect: 'follow',
-    signal: AbortSignal.timeout(60000),
+    signal: AbortSignal.timeout(120000),
   });
   if (!resp.ok || !resp.body) {
     throw new Error(`No se pudo descargar yt-dlp (HTTP ${resp.status}).`);
@@ -125,7 +143,7 @@ async function extractZipWindows(zipPath: string, destDir: string): Promise<bool
   // Expand-Archive from Windows PowerShell 5.1, which was the main cause
   // of the long hang on Windows 10.
   try {
-    await execFileAsync('tar.exe', ['-xf', zipPath, '-C', destDir], { timeout: 120000 });
+    await execFileAsync('tar.exe', ['-xf', zipPath, '-C', destDir], { timeout: 180000 });
     return true;
   } catch {
     // fall through to the PowerShell fallback
@@ -140,7 +158,7 @@ async function extractZipWindows(zipPath: string, destDir: string): Promise<bool
         '-Command',
         `Expand-Archive -LiteralPath '${zipPath.replace(/'/g, "''")}' -DestinationPath '${destDir.replace(/'/g, "''")}' -Force`,
       ],
-      { timeout: 120000 }
+      { timeout: 180000 }
     );
     return true;
   } catch {
@@ -150,7 +168,9 @@ async function extractZipWindows(zipPath: string, destDir: string): Promise<bool
 
 async function verifyBinaryResponds(bin: string): Promise<boolean> {
   try {
-    await execFileAsync(bin, ['-version'], { timeout: 5000 });
+    // 10s: a freshly installed binary can be slow to start the first
+    // time while Windows Defender scans it.
+    await execFileAsync(bin, ['-version'], { timeout: 10000 });
     return true;
   } catch {
     return false;
@@ -210,14 +230,15 @@ async function resolveFfprobePath(ffmpegPath?: string | null): Promise<string | 
 }
 
 // FFmpeg is mandatory when yt-dlp downloads separate video+audio tracks:
-// without it the tracks are never merged. A real, existing ffmpeg.exe path
-// is accepted; the generic 'ffmpeg' name is only trusted when the binary
-// actually responds.
+// without it the tracks are never merged. A path is only accepted when
+// the binary actually runs: a corrupt ffmpeg.exe that merely exists on
+// disk is rejected so the caller can reinstall it automatically.
 async function verifyFfmpegForMerge(
   ffmpegPath: string
 ): Promise<{ ffmpegPath: string; ffprobePath: string | null } | null> {
   if (ffmpegPath && ffmpegPath !== 'ffmpeg') {
     if (!fs.existsSync(ffmpegPath)) return null;
+    if (!(await verifyBinaryResponds(ffmpegPath))) return null;
     const ffprobePath = await resolveFfprobePath(ffmpegPath);
     return { ffmpegPath, ffprobePath };
   }
@@ -279,71 +300,168 @@ function resolveFfmpegPathSync(): string | null {
   return null;
 }
 
-async function ensureFfmpeg(): Promise<string> {
-  const existing = resolveFfmpegPathSync();
-  if (existing) return existing;
+interface EnsureRuntimeOptions {
+  force?: boolean;
+  onLabel?: (label: string) => void;
+}
 
+// Streams a download to disk with progress reporting, an idle timeout
+// (reset by every received chunk, so a stalled connection aborts
+// instead of hanging forever) and a generous total cap. Returns false
+// on any failure and removes the partial file.
+async function downloadToFile(
+  url: string,
+  destPath: string,
+  opts?: {
+    idleTimeoutMs?: number;
+    totalTimeoutMs?: number;
+    onProgress?: (downloaded: number, total: number | null) => void;
+  }
+): Promise<boolean> {
+  const idleTimeoutMs = opts?.idleTimeoutMs ?? 90_000;
+  const totalTimeoutMs = opts?.totalTimeoutMs ?? 600_000;
+  const controller = new AbortController();
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  const totalTimer = setTimeout(() => controller.abort(), totalTimeoutMs);
+  const armIdle = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => controller.abort(), idleTimeoutMs);
+  };
+  try {
+    armIdle();
+    const resp = await fetch(url, { redirect: 'follow', signal: controller.signal });
+    if (!resp.ok || !resp.body) return false;
+    const totalHeader = Number(resp.headers.get('content-length'));
+    const total = Number.isFinite(totalHeader) && totalHeader > 0 ? totalHeader : null;
+    const ws = fs.createWriteStream(destPath);
+    let writeError: Error | null = null;
+    ws.on('error', (e) => {
+      writeError = e;
+    });
+    let downloaded = 0;
+    let lastReportedPct = -1;
+    for await (const chunk of resp.body as unknown as AsyncIterable<Uint8Array>) {
+      armIdle();
+      const buf = Buffer.from(chunk);
+      downloaded += buf.byteLength;
+      if (writeError) throw writeError;
+      if (!ws.write(buf)) {
+        await new Promise<void>((resolve, reject) => {
+          ws.once('drain', resolve);
+          ws.once('error', reject);
+        });
+      }
+      if (opts?.onProgress) {
+        const pct = total ? Math.floor((downloaded / total) * 100) : null;
+        if (pct === null || pct >= lastReportedPct + 2 || downloaded === total) {
+          if (pct !== null) lastReportedPct = pct;
+          opts.onProgress(downloaded, total);
+        }
+      }
+    }
+    await new Promise<void>((resolve, reject) => {
+      ws.once('error', reject);
+      ws.end(() => resolve());
+    });
+    if (writeError) throw writeError;
+    return downloaded > 0;
+  } catch {
+    try {
+      await fs.promises.rm(destPath, { force: true });
+    } catch {
+      // ignore cleanup errors
+    }
+    return false;
+  } finally {
+    if (idleTimer) clearTimeout(idleTimer);
+    clearTimeout(totalTimer);
+  }
+}
+
+async function ensureFfmpeg(opts?: EnsureRuntimeOptions): Promise<string> {
   if (!IS_WINDOWS) {
     return 'ffmpeg';
   }
-
-  try {
-    const { stdout } = await execFileAsync('where.exe', ['ffmpeg'], { timeout: 4000 });
-    const first = stdout
-      .split(/\r?\n/)
-      .map((s) => s.trim())
-      .find(Boolean);
-    if (first && fs.existsSync(first)) {
-      cachedFfmpegPath = first;
-      return first;
-    }
-  } catch {
-    // fallback to downloading portable ffmpeg.exe
-  }
-
-  if (ffmpegDownloadFailed) {
-    // Already tried and failed in this process: do not re-download the
-    // FFmpeg ZIP on every download attempt.
-    return 'ffmpeg';
-  }
-
   const binDir = getRuntimeBinDir();
-  fs.mkdirSync(binDir, { recursive: true });
   const targetExe = path.join(binDir, 'ffmpeg.exe');
-  const tmpZip = path.join(os.tmpdir(), `ss_ffmpeg_${Date.now()}.zip`);
-  const tmpExtract = path.join(os.tmpdir(), `ss_ffmpeg_ex_${Date.now()}`);
 
-  try {
-    const resp = await fetch(FFMPEG_WIN_ZIP_URL, {
-      redirect: 'follow',
-      signal: AbortSignal.timeout(120000),
-    });
-    if (!resp.ok || !resp.body) {
-      ffmpegDownloadFailed = true;
-      return 'ffmpeg';
-    }
-    await fs.promises.writeFile(tmpZip, Buffer.from(await resp.arrayBuffer()));
-    const extractedFfmpegZip = await extractZipWindows(tmpZip, tmpExtract);
-    if (!extractedFfmpegZip) {
-      ffmpegDownloadFailed = true;
-      return 'ffmpeg';
-    }
-
-    const findFfmpegExe = (dir: string): string | null => {
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          const found = findFfmpegExe(full);
-          if (found) return found;
-        } else if (entry.name.toLowerCase() === 'ffmpeg.exe') {
-          return full;
-        }
+  if (!opts?.force) {
+    // Accept an existing ffmpeg.exe only if it actually runs. A corrupt
+    // or partial leftover (for example from an interrupted install by
+    // an older version) is deleted and reinstalled automatically
+    // instead of being trusted forever.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const existing = resolveFfmpegPathSync();
+      if (!existing) break;
+      if (await verifyBinaryResponds(existing)) {
+        cachedFfmpegPath = existing;
+        return existing;
       }
-      return null;
-    };
+      try {
+        await fs.promises.rm(existing, { force: true });
+      } catch {
+        break;
+      }
+      if (cachedFfmpegPath === existing) cachedFfmpegPath = null;
+    }
+    try {
+      const { stdout } = await execFileAsync('where.exe', ['ffmpeg'], { timeout: 4000 });
+      const first = stdout
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .find(Boolean);
+      if (first && fs.existsSync(first) && (await verifyBinaryResponds(first))) {
+        cachedFfmpegPath = first;
+        return first;
+      }
+    } catch {
+      // fall through to the automatic install below
+    }
+  }
 
-    const found = findFfmpegExe(tmpExtract);
-    if (found) {
+  // Automatic install: try each mirror until one produces an
+  // ffmpeg.exe (plus ffprobe.exe) that actually runs. Progress is
+  // reported the whole time, so the UI never sits silently on
+  // "Verificando FFmpeg..." while tens of MB are downloaded.
+  fs.mkdirSync(binDir, { recursive: true });
+  const findExe = (dir: string, name: string): string | null => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        const found = findExe(full, name);
+        if (found) return found;
+      } else if (entry.name.toLowerCase() === name) {
+        return full;
+      }
+    }
+    return null;
+  };
+
+  for (const url of FFMPEG_WIN_ZIP_URLS) {
+    const tmpZip = path.join(os.tmpdir(), `ss_ffmpeg_${Date.now()}.zip`);
+    const tmpExtract = path.join(os.tmpdir(), `ss_ffmpeg_ex_${Date.now()}`);
+    try {
+      opts?.onLabel?.('FFmpeg no esta listo: descargandolo automaticamente...');
+      const okDownload = await downloadToFile(url, tmpZip, {
+        idleTimeoutMs: 90_000,
+        totalTimeoutMs: 600_000,
+        onProgress: (downloaded, total) => {
+          if (total) {
+            const pct = Math.min(99, Math.floor((downloaded / total) * 100));
+            opts?.onLabel?.(`Descargando FFmpeg automaticamente... ${pct}%`);
+          } else {
+            opts?.onLabel?.(
+              `Descargando FFmpeg automaticamente... ${Math.round(downloaded / (1024 * 1024))} MB`
+            );
+          }
+        },
+      });
+      if (!okDownload) continue;
+      opts?.onLabel?.('Instalando FFmpeg...');
+      const extractedZip = await extractZipWindows(tmpZip, tmpExtract);
+      if (!extractedZip) continue;
+      const found = findExe(tmpExtract, 'ffmpeg.exe');
+      if (!found) continue;
       await fs.promises.copyFile(found, targetExe);
       // The FFmpeg builds ship ffprobe.exe next to ffmpeg.exe: keep it
       // too, it is needed to verify the merged file really has audio.
@@ -357,16 +475,22 @@ async function ensureFfmpeg(): Promise<string> {
           // ffprobe can still be resolved later from other locations
         }
       }
-      cachedFfmpegPath = targetExe;
-      return targetExe;
+      if (await verifyBinaryResponds(targetExe)) {
+        cachedFfmpegPath = targetExe;
+        opts?.onLabel?.('FFmpeg instalado y verificado.');
+        return targetExe;
+      }
+      try {
+        await fs.promises.rm(targetExe, { force: true });
+      } catch {
+        // ignore: the next mirror overwrites it anyway
+      }
+    } catch {
+      // try the next mirror
+    } finally {
+      fs.promises.rm(tmpZip, { force: true }).catch(() => {});
+      fs.promises.rm(tmpExtract, { recursive: true, force: true }).catch(() => {});
     }
-    ffmpegDownloadFailed = true;
-  } catch {
-    ffmpegDownloadFailed = true;
-    // ignore and fallback
-  } finally {
-    fs.promises.rm(tmpZip, { force: true }).catch(() => {});
-    fs.promises.rm(tmpExtract, { recursive: true, force: true }).catch(() => {});
   }
 
   return 'ffmpeg';
@@ -622,14 +746,22 @@ async function runYtDlpDownload(
     }
 
     onProgress?.(6, 'Verificando FFmpeg (necesario para unir video y audio)...');
-    const ffmpegPath = await ensureFfmpeg();
-    const verifiedFfmpeg = await verifyFfmpegForMerge(ffmpegPath);
+    const onFfmpegLabel = (label: string) => onProgress?.(6, label);
+    let ffmpegPath = await ensureFfmpeg({ onLabel: onFfmpegLabel });
+    let verifiedFfmpeg = await verifyFfmpegForMerge(ffmpegPath);
+    if (!verifiedFfmpeg) {
+      // Self-healing retry: force a clean automatic reinstall of
+      // FFmpeg and check again before giving up on the download.
+      onProgress?.(6, 'FFmpeg no respondio: reinstalando automaticamente...');
+      ffmpegPath = await ensureFfmpeg({ force: true, onLabel: onFfmpegLabel });
+      verifiedFfmpeg = await verifyFfmpegForMerge(ffmpegPath);
+    }
     if (!verifiedFfmpeg) {
       await cleanup();
       return {
         ok: false,
         reason:
-          'No se pudo preparar FFmpeg en tu PC. FFmpeg es necesario para unir el video y el audio, asi que no se entrego una descarga sin audio. Revisa tu conexion e intentalo de nuevo.',
+          'No se pudo instalar FFmpeg automaticamente en tu PC. FFmpeg es necesario para unir el video y el audio, asi que no se entrego una descarga sin audio. Revisa tu conexion a internet e intentalo de nuevo.',
       };
     }
     const mergeFfmpegPath = verifiedFfmpeg.ffmpegPath;
@@ -662,6 +794,24 @@ async function runYtDlpDownload(
       let errLineBuf = '';
       let aborted = false;
 
+      // Inactivity watchdog: a healthy download keeps producing
+      // progress output, so the timer only fires after 3 minutes of
+      // complete silence from yt-dlp (a long FFmpeg merge on a slow
+      // disk included), not merely because a download is large/slow.
+      let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+      const armWatchdog = () => {
+        if (timeoutTimer) clearTimeout(timeoutTimer);
+        timeoutTimer = setTimeout(() => {
+          try {
+            child.kill('SIGTERM');
+          } catch {
+            // ignore
+          }
+          control?.signal?.removeEventListener('abort', onAbort);
+          reject(new Error('Tiempo de espera agotado descargando el video.'));
+        }, 180_000);
+      };
+
       const onAbort = () => {
         aborted = true;
         try {
@@ -669,20 +819,11 @@ async function runYtDlpDownload(
         } catch {
           // ignore
         }
-        clearTimeout(timeoutTimer);
+        if (timeoutTimer) clearTimeout(timeoutTimer);
         reject(new Error('Descarga cancelada por el usuario.'));
       };
       control?.signal?.addEventListener('abort', onAbort, { once: true });
-
-      const timeoutTimer = setTimeout(() => {
-        try {
-          child.kill('SIGTERM');
-        } catch {
-          // ignore
-        }
-        control?.signal?.removeEventListener('abort', onAbort);
-        reject(new Error('Tiempo de espera agotado descargando el video.'));
-      }, 180_000);
+      armWatchdog();
 
       const handleLine = (rawLine: string) => {
         const line = rawLine.trim();
@@ -756,6 +897,7 @@ async function runYtDlpDownload(
       };
 
       const feedLines = (chunk: Buffer, isErr: boolean) => {
+        armWatchdog();
         const text = chunk.toString('utf8');
         if (isErr) {
           stderrBuf += text;
