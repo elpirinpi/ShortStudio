@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { Readable } from 'node:stream';
+import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -18,6 +18,11 @@ const execFileAsync = promisify(execFile);
 
 const PORT = Number(process.env.PORT || 3000);
 const MAX_VIDEO_BYTES = 450 * 1024 * 1024; // 450 MB safety cap
+// C1 (auditoría): la API local exige un token. Se acepta en la cabecera
+// X-ShortStudio-Token (mismo nombre que ya usa el conector de Windows) o
+// en la cookie que el propio servidor entrega al servir el frontend.
+const API_TOKEN_HEADER = 'x-shortstudio-token';
+const API_TOKEN_COOKIE = 'shortstudio_api_token';
 const IS_WINDOWS = process.platform === 'win32';
 const YTDLP_RELEASE_URL = IS_WINDOWS
   ? 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe'
@@ -1360,6 +1365,9 @@ export interface StartServerOptions {
   distDir?: string;
   binDir?: string;
   mediaDir?: string;
+  // C1: token de la API local. Si no se pasa, se usa la variable de
+  // entorno SHORTSTUDIO_API_TOKEN o se genera uno aleatorio por proceso.
+  apiToken?: string;
 }
 
 function sanitizeDownloadFilename(rawTitle: string): string {
@@ -1413,6 +1421,78 @@ export async function startServer(options: StartServerOptions = {}) {
   const app = express();
   app.use(express.json({ limit: '5mb' }));
 
+  // --- C1 (auditoría): autenticación por token de la API local --------
+  // Antes ningún endpoint comprobaba credenciales y el servidor podía
+  // quedar expuesto a toda la red local. Ahora:
+  //  - Se genera un token aleatorio por proceso (o lo fija quien arranca
+  //    el servidor con options.apiToken / SHORTSTUDIO_API_TOKEN).
+  //  - El frontend lo sirve ESTE mismo servidor (mismo origen), así que
+  //    el token se entrega al navegador como cookie HttpOnly al cargar
+  //    la página y el navegador lo reenvía automáticamente en cada
+  //    petición /api/*, incluidos los <video src="/api/local-media/...">
+  //    que no pueden enviar cabeceras personalizadas.
+  //  - Los clientes que no son navegador pueden enviar el token en la
+  //    cabecera X-ShortStudio-Token, como ya hace el conector de Windows.
+  const apiToken =
+    options.apiToken ||
+    process.env.SHORTSTUDIO_API_TOKEN ||
+    crypto.randomBytes(32).toString('hex');
+  const apiTokenBuffer = Buffer.from(apiToken, 'utf8');
+  const hasValidApiToken = (candidate: string | undefined): boolean => {
+    if (!candidate) return false;
+    const buf = Buffer.from(candidate, 'utf8');
+    return buf.length === apiTokenBuffer.length && crypto.timingSafeEqual(buf, apiTokenBuffer);
+  };
+  const readCookie = (req: Request, name: string): string | undefined => {
+    const header = req.headers.cookie;
+    if (!header) return undefined;
+    for (const part of header.split(';')) {
+      const eq = part.indexOf('=');
+      if (eq === -1) continue;
+      if (part.slice(0, eq).trim() === name) {
+        try {
+          return decodeURIComponent(part.slice(eq + 1).trim());
+        } catch {
+          return undefined;
+        }
+      }
+    }
+    return undefined;
+  };
+
+  // Entrega del token: las respuestas que no son de la API (la página y
+  // sus recursos) fijan o renuevan la cookie con el token vigente, para
+  // que un reinicio del servidor no deje al navegador con un token viejo.
+  app.use((req: Request, res: Response, next: () => void) => {
+    if (!req.path.startsWith('/api')) {
+      res.setHeader(
+        'Set-Cookie',
+        `${API_TOKEN_COOKIE}=${encodeURIComponent(apiToken)}; HttpOnly; SameSite=Strict; Path=/`
+      );
+    }
+    next();
+  });
+
+  // Validación: todas las rutas /api/* exigen el token, salvo el health
+  // check, que no expone datos ni permite ninguna acción.
+  app.use('/api', (req: Request, res: Response, next: () => void) => {
+    if (req.path === '/health' && req.method === 'GET') {
+      next();
+      return;
+    }
+    const headerValue = req.headers[API_TOKEN_HEADER];
+    const candidate =
+      (Array.isArray(headerValue) ? headerValue[0] : headerValue) ||
+      readCookie(req, API_TOKEN_COOKIE);
+    if (hasValidApiToken(candidate)) {
+      next();
+      return;
+    }
+    res.status(401).json({
+      error: 'No autorizado: falta el token de la API local de ShortStudio.',
+    });
+  });
+
   app.get('/api/health', (_req: Request, res: Response) => {
     res.json({
       ok: true,
@@ -1440,9 +1520,36 @@ export async function startServer(options: StartServerOptions = {}) {
       res.status(404).json({ error: 'Almacenamiento local de escritorio no disponible.' });
       return;
     }
+    // A3 (auditoría): la subida cuenta los bytes en streaming y se
+    // aborta al superar el mismo tope que usan el resto de endpoints;
+    // antes se volcaba a disco sin ningún límite y podía llenarlo.
+    const declaredLength = Number(req.headers['content-length'] || 0);
+    if (declaredLength > MAX_VIDEO_BYTES) {
+      res.status(413).json({
+        error: `El archivo supera el límite de ${Math.round(MAX_VIDEO_BYTES / (1024 * 1024))} MB.`,
+      });
+      return;
+    }
     const tmpPath = `${paths.binPath}.part`;
+    let receivedBytes = 0;
+    let limitExceeded = false;
+    const countingStream = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        receivedBytes += chunk.length;
+        if (receivedBytes > MAX_VIDEO_BYTES) {
+          limitExceeded = true;
+          callback(
+            new Error(
+              `El archivo supera el límite de ${Math.round(MAX_VIDEO_BYTES / (1024 * 1024))} MB.`
+            )
+          );
+          return;
+        }
+        callback(null, chunk);
+      },
+    });
     try {
-      await pipeline(req, fs.createWriteStream(tmpPath));
+      await pipeline(req, countingStream, fs.createWriteStream(tmpPath));
       if (fs.existsSync(paths.binPath)) {
         await fs.promises.unlink(paths.binPath).catch(() => {});
       }
@@ -1457,7 +1564,14 @@ export async function startServer(options: StartServerOptions = {}) {
       );
       res.json({ ok: true });
     } catch (err) {
+      // El parcial siempre se borra, también cuando se aborta por tamaño.
       await fs.promises.rm(tmpPath, { force: true }).catch(() => {});
+      if (limitExceeded) {
+        res.status(413).json({
+          error: `El archivo supera el límite de ${Math.round(MAX_VIDEO_BYTES / (1024 * 1024))} MB.`,
+        });
+        return;
+      }
       res.status(500).json({
         error: err instanceof Error ? err.message : 'Error guardando video en disco.',
       });
@@ -2922,19 +3036,24 @@ export async function startServer(options: StartServerOptions = {}) {
     });
   }
 
-  const targetHost = options.host || '0.0.0.0';
+  // C1: por defecto el servidor solo escucha en el propio equipo. Para
+  // exponerlo en la red local hay que pedirlo de forma explícita con
+  // options.host o con la variable de entorno SHORTSTUDIO_HOST=0.0.0.0
+  // (e incluso entonces la API seguirá exigiendo el token).
+  const targetHost = options.host || process.env.SHORTSTUDIO_HOST || '127.0.0.1';
   const targetPort = options.port !== undefined ? options.port : PORT;
 
   return await new Promise<{
     app: ReturnType<typeof express>;
     server: import('node:http').Server;
     port: number;
+    apiToken: string;
   }>((resolve, reject) => {
     const server = app.listen(targetPort, targetHost, () => {
       const addr = server.address();
       const actualPort = typeof addr === 'object' && addr ? addr.port : targetPort;
       console.log(`ShortStudio server listening on http://${targetHost}:${actualPort}`);
-      resolve({ app, server, port: actualPort });
+      resolve({ app, server, port: actualPort, apiToken });
     });
     server.once('error', (err) => {
       reject(err);
