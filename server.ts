@@ -1076,7 +1076,7 @@ function getClientUserAgent(client: ClientCandidate): string {
   return BROWSER_UA;
 }
 
-async function downloadToFile(url: string, destPath: string, userAgent: string): Promise<void> {
+async function downloadStreamToFile(url: string, destPath: string, userAgent: string): Promise<void> {
   const res = await fetch(url, {
     headers: {
       'User-Agent': userAgent,
@@ -1202,8 +1202,8 @@ async function handleYouTubeImport(res: Response, rawUrl: string, videoId: strin
             const tmpOut = path.join(os.tmpdir(), `yt_out_${stamp}.mp4`);
             try {
               await Promise.all([
-                downloadToFile(videoUrl, tmpVideo, ua),
-                downloadToFile(audioUrl, tmpAudio, ua),
+                downloadStreamToFile(videoUrl, tmpVideo, ua),
+                downloadStreamToFile(audioUrl, tmpAudio, ua),
               ]);
               const ffmpegBin = await ensureFfmpeg();
               await execFileAsync(ffmpegBin, [
