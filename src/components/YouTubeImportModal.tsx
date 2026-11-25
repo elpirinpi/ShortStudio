@@ -106,7 +106,7 @@ export function YouTubeImportModal({
         if (e.target === e.currentTarget && !downloading) onClose();
       }}
     >
-      <div className="w-full max-w-xl bg-[#12151c] border border-slate-800 rounded-xl divide-y divide-slate-800/80 shadow-2xl max-h-[92vh] overflow-y-auto">
+      <div className="w-full max-w-xl bg-[#12151c] border border-white/[0.08] rounded-2xl divide-y divide-white/[0.06] shadow-2xl max-h-[92vh] overflow-y-auto">
         {/* Header */}
         <div className="p-5 flex items-start justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
@@ -114,10 +114,10 @@ export function YouTubeImportModal({
               src={info.thumbnailUrl}
               alt={info.title}
               referrerPolicy="no-referrer"
-              className="w-16 h-10 rounded-md object-cover border border-slate-800 shrink-0"
+              className="w-16 h-10 rounded-lg object-cover border border-white/[0.08] shrink-0"
             />
             <div className="min-w-0 space-y-0.5">
-              <h3 className="text-sm font-semibold text-slate-100 truncate">{info.title}</h3>
+              <h3 className="text-sm font-semibold text-white truncate">{info.title}</h3>
               <div className="flex items-center gap-2 text-xs text-slate-400">
                 <span className="truncate">{info.author}</span>
                 <span aria-hidden="true">·</span>
@@ -130,7 +130,7 @@ export function YouTubeImportModal({
             disabled={downloading}
             onClick={onClose}
             aria-label="Cerrar"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-[#191d26] disabled:opacity-40 cursor-pointer shrink-0"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] disabled:opacity-40 cursor-pointer shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
@@ -145,7 +145,7 @@ export function YouTubeImportModal({
             lo carga al editor.
           </p>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 py-2.5 border-y border-slate-800/70">
+          <div className="flex flex-wrap items-center justify-between gap-3 py-2.5 border-y border-white/[0.06]">
             <div className="flex items-center gap-2 text-xs">
               {connectorStatus.connected ? (
                 <>
@@ -185,7 +185,7 @@ export function YouTubeImportModal({
               type="button"
               disabled={checking || downloading}
               onClick={handleManualCheck}
-              className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
+              className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-100 disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${checking ? 'animate-spin' : ''}`} />
               <span>Comprobar</span>
@@ -193,7 +193,7 @@ export function YouTubeImportModal({
           </div>
 
           {!connectorStatus.connected && !connectorStatus.authMismatch && inIframe && (
-            <div className="p-3.5 rounded-lg bg-amber-500/10 border border-amber-500/30 space-y-2.5">
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 space-y-2.5">
               <p className="text-xs text-amber-100 leading-relaxed">
                 <strong>¿Ya tienes la ventana negra abierta y sigue sin conectar?</strong> Tu
                 navegador bloquea conexiones locales (<span className="font-mono">127.0.0.1</span>)
@@ -206,7 +206,7 @@ export function YouTubeImportModal({
                     href={directAppUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 whitespace-nowrap"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 whitespace-nowrap"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                     <span>Abrir en pestaña directa</span>
@@ -215,7 +215,7 @@ export function YouTubeImportModal({
                 <button
                   type="button"
                   onClick={handleCopyUrl}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-700 hover:bg-[#222733] cursor-pointer whitespace-nowrap"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-200 bg-[#181c25] hover:bg-[#222836] cursor-pointer whitespace-nowrap"
                 >
                   {copiedUrl ? (
                     <>
@@ -236,7 +236,7 @@ export function YouTubeImportModal({
           {/* Step 1: Download 1-click launcher */}
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold text-slate-100">
+              <span className="text-xs font-semibold text-white">
                 1. Descarga y abre el Conector Windows (solo la primera vez)
               </span>
             </div>
@@ -252,27 +252,27 @@ export function YouTubeImportModal({
                 onDownloadLauncher();
                 setLauncherDownloaded(true);
               }}
-              className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-xs font-medium text-slate-100 bg-[#191d26] border border-slate-700 hover:bg-[#222733] disabled:opacity-45 cursor-pointer whitespace-nowrap"
+              className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-medium text-slate-100 bg-[#181c25] hover:bg-[#222836] disabled:opacity-45 cursor-pointer whitespace-nowrap transition-colors"
             >
-              <Download className="w-3.5 h-3.5 text-indigo-400" />
+              <Download className="w-3.5 h-3.5 text-blue-400" />
               <span>Descargar ShortStudio-Conector-Windows.bat</span>
             </button>
           </div>
 
           {downloading && (
-            <div className="p-3.5 rounded-lg bg-[#0b0d11] border border-indigo-500/35 space-y-2">
+            <div className="p-3.5 rounded-xl bg-[#0b0d12] border border-blue-500/35 space-y-2">
               <div className="flex items-center justify-between gap-2 text-xs">
                 <span className="inline-flex items-center gap-2 font-medium text-slate-200 truncate">
-                  <LoaderCircle className="w-3.5 h-3.5 text-indigo-400 animate-spin shrink-0" />
+                  <LoaderCircle className="w-3.5 h-3.5 text-blue-400 animate-spin shrink-0" />
                   <span className="truncate">{progressLabel || 'Descargando MP4 en tu PC...'}</span>
                 </span>
-                <span className="font-mono-tabular font-semibold text-indigo-400 shrink-0">
+                <span className="font-mono-tabular font-semibold text-blue-400 shrink-0">
                   {Math.max(0, Math.min(100, Math.round(progressPercent)))}%
                 </span>
               </div>
-              <div className="h-2 bg-[#191d26] rounded-full overflow-hidden border border-slate-800">
+              <div className="h-1.5 bg-[#161a24] rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-indigo-500 transition-[width] duration-200"
+                  className="h-full bg-blue-500 transition-[width] duration-200"
                   style={{ width: `${Math.max(2, Math.min(100, progressPercent))}%` }}
                 />
               </div>
@@ -280,7 +280,7 @@ export function YouTubeImportModal({
           )}
 
           {errorMsg && (
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-xs text-rose-200">
+            <div className="flex items-start gap-2 p-3 rounded-xl bg-rose-500/10 border border-rose-500/25 text-xs text-rose-200">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
               <span>{errorMsg}</span>
             </div>
@@ -293,7 +293,7 @@ export function YouTubeImportModal({
             type="button"
             disabled={!connectorStatus.connected || downloading}
             onClick={onDownloadViaConnector}
-            className="flex-1 inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
+            className="flex-1 inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
           >
             {downloading ? (
               <>
@@ -317,7 +317,7 @@ export function YouTubeImportModal({
               onClose();
               onPickLocalFile();
             }}
-            className="inline-flex items-center justify-center gap-2 py-2.5 px-3.5 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] disabled:opacity-45 cursor-pointer whitespace-nowrap"
+            className="inline-flex items-center justify-center gap-2 py-2.5 px-3.5 rounded-xl text-xs font-medium text-slate-200 bg-[#181c25] hover:bg-[#222836] disabled:opacity-45 cursor-pointer whitespace-nowrap"
           >
             <FileVideo className="w-3.5 h-3.5 text-slate-400" />
             <span>Subir Archivo</span>

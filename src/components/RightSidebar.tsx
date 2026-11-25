@@ -70,11 +70,11 @@ export function RightSidebar({
   };
 
   return (
-    <aside className="w-[312px] shrink-0 bg-[#12151c] border-l border-slate-800/90 flex flex-col min-h-0">
-      <div className="p-4 border-b border-slate-800/90 flex flex-col gap-3">
+    <aside className="w-[312px] shrink-0 bg-[#12151c] border-l border-white/[0.06] flex flex-col min-h-0">
+      <div className="p-4 border-b border-white/[0.06] flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-semibold text-slate-200">Subtítulos Dinámicos</h2>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <span className="text-[11px] font-mono-tabular text-slate-400">
               {subtitles.length} bloques
             </span>
@@ -90,13 +90,13 @@ export function RightSidebar({
             </button>
           </div>
         </div>
-        <div className="bg-[#0b0d11] border border-slate-800/90 rounded-lg p-2.5 flex flex-col gap-2">
+        <div className="bg-[#0b0d12]/80 rounded-xl p-3 flex flex-col gap-2">
           <div className="grid grid-cols-2 gap-1.5">
             <select
               value={transcribeLang}
               disabled={transcribing}
               onChange={(e) => setTranscribeLang(e.target.value)}
-              className="bg-[#12151c] border border-slate-800 rounded-md px-2 py-1.5 text-[11px] text-slate-200 focus:outline-none focus:border-indigo-500"
+              className="bg-[#141821] border border-white/[0.06] rounded-lg px-2 py-1.5 text-[11px] text-slate-200 focus:outline-none focus:border-blue-500/70"
             >
               <option value="es">Español</option>
               <option value="en">Inglés</option>
@@ -107,7 +107,7 @@ export function RightSidebar({
               value={wordsPerBlock}
               disabled={transcribing}
               onChange={(e) => setWordsPerBlock(Number(e.target.value))}
-              className="bg-[#12151c] border border-slate-800 rounded-md px-2 py-1.5 text-[11px] text-slate-200 focus:outline-none focus:border-indigo-500"
+              className="bg-[#141821] border border-white/[0.06] rounded-lg px-2 py-1.5 text-[11px] text-slate-200 focus:outline-none focus:border-blue-500/70"
             >
               <option value={2}>2 palabras / bloque</option>
               <option value={3}>3 palabras / bloque</option>
@@ -119,7 +119,7 @@ export function RightSidebar({
             type="button"
             disabled={!hasMediaOrDemo || transcribing}
             onClick={() => onTranscribeAudio(transcribeLang, wordsPerBlock)}
-            className="w-full inline-flex items-center justify-center gap-2 py-2 px-3 rounded-md text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-45 disabled:cursor-not-allowed transition-colors cursor-pointer"
+            className="w-full inline-flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-45 disabled:cursor-not-allowed transition-colors cursor-pointer"
           >
             {transcribing ? (
               <LoaderCircle className="w-3.5 h-3.5 animate-spin" />
@@ -135,9 +135,9 @@ export function RightSidebar({
 
           {transcribing && (
             <div className="space-y-1">
-              <div className="h-1.5 bg-[#12151c] rounded-full overflow-hidden">
+              <div className="h-1.5 bg-[#141821] rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-indigo-500 transition-[width] duration-150"
+                  className="h-full bg-blue-500 transition-[width] duration-150"
                   style={{ width: `${transcribeProgress}%` }}
                 />
               </div>
@@ -150,30 +150,30 @@ export function RightSidebar({
           <button
             type="button"
             onClick={onAddSub}
-            className="inline-flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] transition-colors whitespace-nowrap cursor-pointer"
+            className="inline-flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-medium text-slate-200 bg-[#181c25] hover:bg-[#222836] transition-colors whitespace-nowrap cursor-pointer"
           >
-            <Plus className="w-3.5 h-3.5 text-indigo-400" />
+            <Plus className="w-3.5 h-3.5 text-blue-400" />
             <span>Añadir Bloque</span>
           </button>
           <button
             type="button"
             onClick={onOpenScriptModal}
-            className="inline-flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] transition-colors whitespace-nowrap cursor-pointer"
+            className="inline-flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-medium text-slate-200 bg-[#181c25] hover:bg-[#222836] transition-colors whitespace-nowrap cursor-pointer"
           >
-            <AlignLeft className="w-3.5 h-3.5 text-indigo-400" />
+            <AlignLeft className="w-3.5 h-3.5 text-blue-400" />
             <span>Guion / Dictar</span>
           </button>
         </div>
       </div>
 
       {selectedSub && (
-        <div className="p-4 border-b border-slate-800/90 bg-[#151922] flex flex-col gap-2.5">
+        <div className="p-4 border-b border-white/[0.06] bg-[#151923] flex flex-col gap-2.5">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-indigo-300">Editar Bloque</span>
+            <span className="text-xs font-semibold text-blue-400">Editar Bloque</span>
             <button
               type="button"
               onClick={() => onDeleteSub(selectedSub.id)}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-rose-300 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 cursor-pointer"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 cursor-pointer"
             >
               <Trash2 className="w-3 h-3" />
               <span>Eliminar</span>
@@ -185,7 +185,7 @@ export function RightSidebar({
             value={selectedSub.text}
             onChange={(e) => onUpdateSub(selectedSub.id, { text: e.target.value })}
             placeholder="Escribe el texto del subtítulo..."
-            className="w-full bg-[#0b0d11] border border-slate-800 rounded-lg p-2.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 resize-y"
+            className="w-full bg-[#0b0d12] border border-white/[0.06] rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70 resize-y"
           />
 
           <p className="text-[11px] text-slate-400">
@@ -209,7 +209,7 @@ export function RightSidebar({
                   );
                   onUpdateSub(selectedSub.id, { start: val });
                 }}
-                className="w-full bg-[#0b0d11] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono-tabular text-slate-100 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0b0d12] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-xs font-mono-tabular text-slate-100 focus:outline-none focus:border-blue-500/70"
               />
             </label>
             <label className="flex flex-col gap-1">
@@ -227,7 +227,7 @@ export function RightSidebar({
                   );
                   onUpdateSub(selectedSub.id, { end: val });
                 }}
-                className="w-full bg-[#0b0d11] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono-tabular text-slate-100 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0b0d12] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-xs font-mono-tabular text-slate-100 focus:outline-none focus:border-blue-500/70"
               />
             </label>
           </div>
@@ -237,7 +237,7 @@ export function RightSidebar({
               type="button"
               onClick={() => shiftBlock(-0.2)}
               title="Adelantar bloque 0.2s"
-              className="py-1.5 px-1.5 rounded-md text-[11px] font-mono-tabular bg-[#191d26] border border-slate-800 text-slate-300 hover:bg-[#222733] cursor-pointer"
+              className="py-1.5 px-1.5 rounded-lg text-[11px] font-mono-tabular bg-[#1c212c] text-slate-300 hover:bg-[#252c3b] hover:text-white cursor-pointer"
             >
               -0.2s
             </button>
@@ -245,7 +245,7 @@ export function RightSidebar({
               type="button"
               onClick={() => shiftBlock(0.2)}
               title="Retrasar bloque 0.2s"
-              className="py-1.5 px-1.5 rounded-md text-[11px] font-mono-tabular bg-[#191d26] border border-slate-800 text-slate-300 hover:bg-[#222733] cursor-pointer"
+              className="py-1.5 px-1.5 rounded-lg text-[11px] font-mono-tabular bg-[#1c212c] text-slate-300 hover:bg-[#252c3b] hover:text-white cursor-pointer"
             >
               +0.2s
             </button>
@@ -257,7 +257,7 @@ export function RightSidebar({
                 }
               }}
               title="Fijar inicio en el cabezal actual"
-              className="py-1.5 px-1.5 rounded-md text-[11px] font-medium bg-[#191d26] border border-slate-800 text-slate-300 hover:bg-[#222733] cursor-pointer truncate"
+              className="py-1.5 px-1.5 rounded-lg text-[11px] font-medium bg-[#1c212c] text-slate-300 hover:bg-[#252c3b] hover:text-white cursor-pointer truncate"
             >
               In aquí
             </button>
@@ -269,7 +269,7 @@ export function RightSidebar({
                 }
               }}
               title="Fijar fin en el cabezal actual"
-              className="py-1.5 px-1.5 rounded-md text-[11px] font-medium bg-[#191d26] border border-slate-800 text-slate-300 hover:bg-[#222733] cursor-pointer truncate"
+              className="py-1.5 px-1.5 rounded-lg text-[11px] font-medium bg-[#1c212c] text-slate-300 hover:bg-[#252c3b] hover:text-white cursor-pointer truncate"
             >
               Out aquí
             </button>
@@ -280,7 +280,7 @@ export function RightSidebar({
               type="button"
               onClick={() => onSplitSub(selectedSub.id)}
               disabled={selectedSub.end - selectedSub.start < 0.6}
-              className="inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-md text-[11px] font-medium bg-[#191d26] border border-slate-800 text-slate-300 hover:bg-[#222733] disabled:opacity-40 cursor-pointer"
+              className="inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-[11px] font-medium bg-[#1c212c] text-slate-300 hover:bg-[#252c3b] hover:text-white disabled:opacity-40 cursor-pointer"
             >
               <Scissors className="w-3 h-3" />
               <span>Dividir en 2</span>
@@ -289,7 +289,7 @@ export function RightSidebar({
               type="button"
               onClick={() => onMergeNextSub(selectedSub.id)}
               disabled={!hasNextSub}
-              className="inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-md text-[11px] font-medium bg-[#191d26] border border-slate-800 text-slate-300 hover:bg-[#222733] disabled:opacity-40 cursor-pointer"
+              className="inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-[11px] font-medium bg-[#1c212c] text-slate-300 hover:bg-[#252c3b] hover:text-white disabled:opacity-40 cursor-pointer"
             >
               <Merge className="w-3 h-3" />
               <span>Unir siguiente</span>
@@ -317,10 +317,10 @@ export function RightSidebar({
                   onSelectSub(sub.id);
                   onSeekTo(sub.start + 0.05);
                 }}
-                className={`w-full text-left p-2.5 rounded-lg border transition-colors flex flex-col gap-1 cursor-pointer ${
+                className={`w-full text-left p-2.5 rounded-xl border transition-colors flex flex-col gap-1 cursor-pointer ${
                   isSelected
-                    ? 'bg-indigo-600/15 border-indigo-500/70'
-                    : 'bg-[#171b24] border-slate-800/90 hover:border-slate-700'
+                    ? 'bg-blue-600/15 border-blue-500/60'
+                    : 'bg-[#161a24] border-white/[0.05] hover:border-white/[0.12]'
                 }`}
               >
                 <div className="flex items-center justify-between text-[11px] font-mono-tabular text-slate-400">

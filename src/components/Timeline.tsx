@@ -143,11 +143,11 @@ export function Timeline({
         }
 
         if (!inTrim) {
-          ctx.fillStyle = 'rgba(148, 163, 184, 0.18)';
+          ctx.fillStyle = 'rgba(148, 163, 184, 0.16)';
         } else if (!isKept) {
           ctx.fillStyle = 'rgba(244, 63, 94, 0.36)';
         } else {
-          ctx.fillStyle = 'rgba(129, 140, 248, 0.78)';
+          ctx.fillStyle = 'rgba(59, 130, 246, 0.85)';
         }
 
         const x = (i / barCount) * w;
@@ -251,8 +251,8 @@ export function Timeline({
   };
 
   return (
-    <footer className="h-[176px] shrink-0 bg-[#12151c] border-t border-slate-800/90 flex flex-col">
-      <div className="h-8 px-4 border-b border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+    <footer className="h-[176px] shrink-0 bg-[#12151c] border-t border-white/[0.06] flex flex-col">
+      <div className="h-8 px-4 border-b border-white/[0.06] flex items-center justify-between text-xs text-slate-400">
         <span className="truncate pr-3">
           Línea de tiempo{' '}
           {waveformLoading
@@ -310,7 +310,7 @@ export function Timeline({
           </div>
 
           {/* Video Trim + Audio Waveform Track */}
-          <div className="h-9 bg-[#0b0d11] border border-slate-800 rounded-md relative overflow-hidden">
+          <div className="h-9 bg-[#0b0d12] border border-white/[0.06] rounded-lg relative overflow-hidden">
             <canvas
               ref={waveCanvasRef}
               className="absolute inset-0 w-full h-full pointer-events-none"
@@ -319,7 +319,7 @@ export function Timeline({
               Video y Onda
             </span>
             <div
-              className="absolute top-0 bottom-0 bg-indigo-500/12 border-t border-b border-indigo-400/65"
+              className="absolute top-0 bottom-0 bg-blue-500/12 border-t border-b border-blue-400/70"
               style={{ left: `${trimLeftPct}%`, width: `${trimWidthPct}%` }}
             >
               <button
@@ -328,9 +328,9 @@ export function Timeline({
                 onPointerDown={(e) => handleTrimPointerDown(e, 'start')}
                 onPointerMove={handleTrimPointerMove}
                 onPointerUp={handleTrimPointerUp}
-                className="absolute left-0 top-0 bottom-0 w-2.5 bg-indigo-500 hover:bg-indigo-400 cursor-ew-resize flex items-center justify-center z-20"
+                className="absolute left-0 top-0 bottom-0 w-2.5 bg-blue-500 hover:bg-blue-400 cursor-ew-resize flex items-center justify-center z-20"
               >
-                <span className="w-0.5 h-4 bg-white/80 rounded-full" />
+                <span className="w-0.5 h-4 bg-white/85 rounded-full" />
               </button>
               <button
                 type="button"
@@ -338,15 +338,15 @@ export function Timeline({
                 onPointerDown={(e) => handleTrimPointerDown(e, 'end')}
                 onPointerMove={handleTrimPointerMove}
                 onPointerUp={handleTrimPointerUp}
-                className="absolute right-0 top-0 bottom-0 w-2.5 bg-indigo-500 hover:bg-indigo-400 cursor-ew-resize flex items-center justify-center z-20"
+                className="absolute right-0 top-0 bottom-0 w-2.5 bg-blue-500 hover:bg-blue-400 cursor-ew-resize flex items-center justify-center z-20"
               >
-                <span className="w-0.5 h-4 bg-white/80 rounded-full" />
+                <span className="w-0.5 h-4 bg-white/85 rounded-full" />
               </button>
             </div>
           </div>
 
           {/* Subtitles Track */}
-          <div className="h-7 bg-[#0b0d11] border border-slate-800 rounded-md relative overflow-hidden">
+          <div className="h-7 bg-[#0b0d12] border border-white/[0.06] rounded-lg relative overflow-hidden">
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-400 z-10 pointer-events-none">
               Subtítulos
             </span>
@@ -365,7 +365,7 @@ export function Timeline({
                   className={`absolute top-1 bottom-1 rounded text-[10px] font-medium px-1.5 flex items-center overflow-hidden whitespace-nowrap cursor-grab active:cursor-grabbing transition-colors ${
                     isSelected
                       ? 'bg-amber-400 text-slate-950 z-20 ring-1 ring-white'
-                      : 'bg-sky-600/85 text-white hover:bg-sky-500 z-10'
+                      : 'bg-blue-600/85 text-white hover:bg-blue-500 z-10'
                   }`}
                 >
                   <span className="truncate">{sub.text.replace(/\*([^*]+)\*/g, '$1')}</span>
@@ -375,12 +375,12 @@ export function Timeline({
           </div>
 
           {/* BGM Track */}
-          <div className="h-6 bg-[#0b0d11] border border-slate-800 rounded-md relative overflow-hidden">
+          <div className="h-6 bg-[#0b0d12] border border-white/[0.06] rounded-lg relative overflow-hidden">
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-400 z-10 pointer-events-none">
               Música
             </span>
             {hasBgm && (
-              <div className="absolute inset-0.5 bg-emerald-500/20 border border-emerald-500/50 rounded flex items-center pl-16 pr-2 text-[10px] text-emerald-200 truncate">
+              <div className="absolute inset-0.5 bg-emerald-500/20 border border-emerald-500/45 rounded flex items-center pl-16 pr-2 text-[10px] text-emerald-200 truncate">
                 {bgmName}
               </div>
             )}

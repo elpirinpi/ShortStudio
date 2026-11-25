@@ -211,24 +211,24 @@ export function LoginScreen() {
   };
 
   return (
-    <div className="min-h-screen w-screen bg-[#0b0d11] text-slate-100 flex flex-col justify-between p-6 overflow-y-auto">
+    <div className="min-h-screen w-screen bg-[#0b0d12] text-slate-100 flex flex-col justify-between p-6 overflow-y-auto">
       <div className="flex-1 flex items-center justify-center">
-        <div className="w-full max-w-md bg-[#12151c] border border-slate-800/90 rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6">
+        <div className="w-full max-w-md bg-[#12151c] border border-white/[0.07] rounded-2xl p-7 sm:p-9 shadow-2xl space-y-6">
           <div className="flex flex-col items-center text-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center">
-              <Film className="w-6 h-6 text-indigo-400" />
+            <div className="w-11 h-11 rounded-xl bg-blue-500/12 flex items-center justify-center">
+              <Film className="w-5 h-5 text-blue-400" />
             </div>
             <div className="space-y-1">
-              <h1 className="text-xl font-bold tracking-tight text-slate-100">
+              <h1 className="text-xl font-bold tracking-tight text-white">
                 KellyClipAi Studio
               </h1>
               <p className="text-xs text-slate-400">
-                Inicia sesión con tu cuenta de Supabase para acceder al estudio de Shorts 9:16
+                Inicia sesión con tu cuenta de Supabase para acceder al estudio 9:16
               </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-1.5 bg-[#0b0d11] p-1 rounded-lg border border-slate-800">
+          <div className="grid grid-cols-2 gap-1 bg-[#0b0d12] p-1 rounded-xl">
             <button
               type="button"
               onClick={() => {
@@ -236,10 +236,10 @@ export function LoginScreen() {
                 setErrorMsg('');
                 setSuccessMsg('');
               }}
-              className={`inline-flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+              className={`inline-flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                 mode === 'login'
-                  ? 'bg-indigo-600 text-white'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-slate-400 hover:text-slate-100'
               }`}
             >
               <LogIn className="w-3.5 h-3.5" />
@@ -252,10 +252,10 @@ export function LoginScreen() {
                 setErrorMsg('');
                 setSuccessMsg('');
               }}
-              className={`inline-flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+              className={`inline-flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                 mode === 'signup'
-                  ? 'bg-indigo-600 text-white'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-slate-400 hover:text-slate-100'
               }`}
             >
               <UserPlus className="w-3.5 h-3.5" />
@@ -264,7 +264,7 @@ export function LoginScreen() {
           </div>
 
           {!isSupabaseConfigured && (
-            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 leading-relaxed">
+            <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-200 leading-relaxed">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
               <span>
                 {!hasSupabaseUrl && hasSupabaseKey
@@ -278,7 +278,7 @@ export function LoginScreen() {
             <label className="flex flex-col gap-1.5">
               <span className="text-xs font-medium text-slate-300">Correo electrónico</span>
               <div className="relative">
-                <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="email"
                   name="email"
@@ -288,7 +288,7 @@ export function LoginScreen() {
                   disabled={!isSupabaseConfigured || loading}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="tu@correo.com"
-                  className="w-full bg-[#0b0d11] border border-slate-800 rounded-lg pl-9 pr-3 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+                  className="w-full bg-[#0b0d12] border border-white/[0.07] rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70 disabled:opacity-50"
                 />
               </div>
             </label>
@@ -305,14 +305,14 @@ export function LoginScreen() {
                         setErrorMsg('');
                         setSuccessMsg('');
                       }}
-                      className="text-[11px] text-indigo-400 hover:text-indigo-300 cursor-pointer"
+                      className="text-[11px] text-blue-400 hover:text-blue-300 cursor-pointer"
                     >
                       ¿Olvidaste tu contraseña?
                     </button>
                   )}
                 </div>
                 <div className="relative">
-                  <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     name="password"
@@ -323,12 +323,12 @@ export function LoginScreen() {
                     disabled={!isSupabaseConfigured || loading}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Mínimo 6 caracteres"
-                    className="w-full bg-[#0b0d11] border border-slate-800 rounded-lg pl-9 pr-9 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+                    className="w-full bg-[#0b0d12] border border-white/[0.07] rounded-xl pl-10 pr-10 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70 disabled:opacity-50"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 cursor-pointer"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 cursor-pointer"
                     aria-label="Mostrar u ocultar contraseña"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -338,14 +338,14 @@ export function LoginScreen() {
             )}
 
             {mode !== 'reset' && (
-              <div className="flex items-center justify-between gap-2 text-xs text-slate-300 select-none">
+              <div className="flex items-center justify-between gap-2 text-xs text-slate-300 select-none pt-0.5">
                 <label className="inline-flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={rememberMe}
                     disabled={!isSupabaseConfigured || loading}
                     onChange={(e) => handleToggleRememberMe(e.target.checked)}
-                    className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
+                    className="w-4 h-4 rounded accent-blue-500 cursor-pointer"
                   />
                   <span>Recordar mis credenciales</span>
                 </label>
@@ -373,14 +373,14 @@ export function LoginScreen() {
             )}
 
             {errorMsg && (
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-xs text-rose-200">
+              <div className="flex items-start gap-2 p-3 rounded-xl bg-rose-500/10 border border-rose-500/25 text-xs text-rose-200">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
                 <span>{errorMsg}</span>
               </div>
             )}
 
             {successMsg && (
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-200">
+              <div className="flex items-start gap-2 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-xs text-emerald-200">
                 <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
                 <span>{successMsg}</span>
               </div>
@@ -389,7 +389,7 @@ export function LoginScreen() {
             <button
               type="submit"
               disabled={!isSupabaseConfigured || loading}
-              className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-45 disabled:cursor-not-allowed transition-colors cursor-pointer"
+              className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-45 disabled:cursor-not-allowed transition-colors cursor-pointer"
             >
               {loading ? (
                 <LoaderCircle className="w-3.5 h-3.5 animate-spin" />

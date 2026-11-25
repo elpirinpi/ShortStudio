@@ -105,11 +105,11 @@ export function CreatePage({
   };
 
   return (
-    <main className="flex-1 overflow-y-auto bg-[#0b0d11] p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
-        <div className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-800/80 pb-4">
-          <div className="space-y-1">
-            <h1 className="text-xl font-bold tracking-tight text-slate-100">
+    <main className="flex-1 overflow-y-auto bg-[#0b0d12] p-6 sm:p-8">
+      <div className="max-w-6xl mx-auto space-y-7">
+        <div className="flex flex-wrap items-end justify-between gap-4 border-b border-white/[0.06] pb-5">
+          <div className="space-y-1.5">
+            <h1 className="text-xl font-bold tracking-tight text-white">
               Crear clips con IA local gratuita
             </h1>
             <p className="text-xs text-slate-400">
@@ -121,16 +121,16 @@ export function CreatePage({
             type="button"
             disabled={analyzing}
             onClick={onRunDemoProject}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] disabled:opacity-45 cursor-pointer whitespace-nowrap"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium text-slate-200 bg-[#161a23] border border-white/[0.07] hover:bg-[#1d222e] disabled:opacity-45 cursor-pointer whitespace-nowrap transition-colors"
           >
-            <Play className="w-3.5 h-3.5 text-indigo-400" />
+            <Play className="w-3.5 h-3.5 text-blue-400" />
             <span>Probar Proyecto Demo</span>
           </button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-7 items-start">
           {/* Left Column: Media Import & Live Analysis */}
-          <div className="lg:col-span-7 flex flex-col gap-5">
+          <div className="lg:col-span-7 flex flex-col gap-6">
             <input
               ref={fileInputRef}
               type="file"
@@ -156,29 +156,29 @@ export function CreatePage({
                 const file = e.dataTransfer.files?.[0];
                 if (file) onSelectFile(file);
               }}
-              className={`rounded-xl border-2 border-dashed p-8 text-center transition-colors flex flex-col items-center gap-4 ${
+              className={`rounded-2xl border border-dashed p-9 text-center transition-colors flex flex-col items-center gap-4 ${
                 dragging
-                  ? 'border-indigo-500 bg-indigo-500/10'
-                  : 'border-slate-800 bg-[#12151c] hover:border-slate-700'
+                  ? 'border-blue-500 bg-blue-500/10'
+                  : 'border-white/[0.12] bg-[#12151c] hover:border-white/[0.2] hover:bg-[#141821]'
               }`}
             >
-              <div className="w-12 h-12 rounded-xl bg-[#191d26] border border-slate-800 flex items-center justify-center">
-                <Upload className="w-5 h-5 text-indigo-400" />
+              <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center">
+                <Upload className="w-5 h-5 text-blue-400" />
               </div>
-              <div className="space-y-1 max-w-sm">
-                <p className="text-sm font-semibold text-slate-100">
+              <div className="space-y-1.5 max-w-sm">
+                <p className="text-sm font-semibold text-white">
                   Arrastra tu video aquí o selecciónalo desde tu equipo
                 </p>
                 <p className="text-xs text-slate-400">
                   Compatible con MP4, MOV y WebM. El archivo se guarda localmente en IndexedDB.
                 </p>
               </div>
-              <div className="flex flex-wrap items-center justify-center gap-2.5">
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
                 <button
                   type="button"
                   disabled={analyzing}
                   onClick={() => fileInputRef.current?.click()}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-45 cursor-pointer"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-45 cursor-pointer transition-colors"
                 >
                   <FileVideo className="w-3.5 h-3.5" />
                   <span>Elegir Archivo</span>
@@ -187,7 +187,7 @@ export function CreatePage({
                   type="button"
                   disabled={analyzing}
                   onClick={onOpenRecorder}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] disabled:opacity-45 cursor-pointer"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-medium text-slate-200 bg-[#181c25] hover:bg-[#202633] disabled:opacity-45 cursor-pointer transition-colors"
                 >
                   <Video className="w-3.5 h-3.5 text-rose-400" />
                   <span>Grabar Cámara / Pantalla</span>
@@ -198,10 +198,10 @@ export function CreatePage({
             {/* Direct / YouTube URL Import */}
             <form
               onSubmit={handleUrlSubmit}
-              className="bg-[#12151c] border border-slate-800/90 rounded-xl p-4 flex flex-col gap-3"
+              className="bg-[#12151c] border border-white/[0.06] rounded-2xl p-5 flex flex-col gap-3.5"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <label className="text-xs font-medium text-slate-300">
+                <label className="text-xs font-medium text-slate-200">
                   Descargar desde YouTube, TikTok, Instagram, Vimeo o MP4 directo
                 </label>
                 {isDesktopApp ? (
@@ -231,7 +231,7 @@ export function CreatePage({
                       type="button"
                       disabled={analyzing || urlLoading}
                       onClick={onDownloadConnectorLauncher}
-                      className="inline-flex items-center gap-1.5 text-[11px] font-medium text-indigo-400 hover:text-indigo-300 disabled:opacity-45 cursor-pointer whitespace-nowrap"
+                      className="inline-flex items-center gap-1.5 text-[11px] font-medium text-blue-400 hover:text-blue-300 disabled:opacity-45 cursor-pointer whitespace-nowrap"
                     >
                       <Download className="w-3 h-3" />
                       <span>Conector Windows (1 clic)</span>
@@ -240,24 +240,24 @@ export function CreatePage({
                 )}
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-2.5">
                 <div className="relative flex-1">
-                  <Link2 className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <Link2 className="w-3.5 h-3.5 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="url"
                     value={urlInput}
                     disabled={analyzing || urlLoading}
                     onChange={(e) => setUrlInput(e.target.value)}
                     placeholder="https://youtube.com/watch?v=... | https://tiktok.com/... | video.mp4"
-                    className="w-full bg-[#0b0d11] border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-[#0b0d12] border border-white/[0.06] rounded-xl pl-9 pr-3.5 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={!urlInput.trim() || analyzing || urlLoading}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] disabled:opacity-45 cursor-pointer whitespace-nowrap"
+                  className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium text-slate-100 bg-[#181c25] hover:bg-[#202633] disabled:opacity-45 cursor-pointer whitespace-nowrap transition-colors"
                 >
-                  {urlLoading && <LoaderCircle className="w-3.5 h-3.5 animate-spin text-indigo-400" />}
+                  {urlLoading && <LoaderCircle className="w-3.5 h-3.5 animate-spin text-blue-400" />}
                   <span>
                     {urlLoading
                       ? `Descargando ${Math.max(0, Math.min(100, Math.round(urlProgressPercent)))}%`
@@ -273,14 +273,14 @@ export function CreatePage({
                       {urlStatusText || 'Descargando MP4...'}
                     </span>
                     <div className="flex items-center gap-2.5 shrink-0">
-                      <span className="font-mono-tabular font-semibold text-indigo-400">
+                      <span className="font-mono-tabular font-semibold text-blue-400">
                         {Math.max(0, Math.min(100, Math.round(urlProgressPercent)))}%
                       </span>
                       {onCancelImportUrl && (
                         <button
                           type="button"
                           onClick={onCancelImportUrl}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-500/10 border border-rose-500/30 text-rose-300 hover:bg-rose-500/20 cursor-pointer"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-500/10 border border-rose-500/25 text-rose-300 hover:bg-rose-500/20 cursor-pointer"
                         >
                           <X className="w-3 h-3" />
                           <span>Cancelar</span>
@@ -288,9 +288,9 @@ export function CreatePage({
                       )}
                     </div>
                   </div>
-                  <div className="h-1.5 bg-[#0b0d11] rounded-full overflow-hidden border border-slate-800">
+                  <div className="h-1.5 bg-[#0b0d12] rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-indigo-500 transition-[width] duration-200"
+                      className="h-full bg-blue-500 transition-[width] duration-200"
                       style={{
                         width: `${Math.max(2, Math.min(100, Math.round(urlProgressPercent)))}%`,
                       }}
@@ -310,8 +310,8 @@ export function CreatePage({
 
             {/* Staged Media Card */}
             {stagedMedia && (
-              <div className="bg-[#12151c] border border-slate-800/90 rounded-xl p-4 flex flex-wrap items-center gap-4">
-                <div className="w-24 h-16 rounded-lg bg-[#0b0d11] border border-slate-800 overflow-hidden shrink-0 flex items-center justify-center">
+              <div className="bg-[#12151c] border border-white/[0.06] rounded-2xl p-5 flex flex-wrap items-center gap-4">
+                <div className="w-24 h-16 rounded-xl bg-[#0b0d12] overflow-hidden shrink-0 flex items-center justify-center">
                   {stagedMedia.thumbnailDataUrl ? (
                     <img
                       src={stagedMedia.thumbnailDataUrl}
@@ -323,7 +323,7 @@ export function CreatePage({
                   )}
                 </div>
                 <div className="min-w-0 flex-1 space-y-1">
-                  <p className="text-sm font-semibold text-slate-100 truncate">
+                  <p className="text-sm font-semibold text-white truncate">
                     {stagedMedia.name}
                   </p>
                   <div className="flex flex-wrap items-center gap-2 text-xs font-mono-tabular text-slate-400">
@@ -345,9 +345,9 @@ export function CreatePage({
                   type="button"
                   disabled={analyzing}
                   onClick={onSaveStagedToPc}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium text-slate-200 bg-[#181c25] hover:bg-[#202633] disabled:opacity-45 cursor-pointer whitespace-nowrap shrink-0 transition-colors"
                 >
-                  <FolderDown className="w-3.5 h-3.5 text-indigo-400" />
+                  <FolderDown className="w-3.5 h-3.5 text-blue-400" />
                   <span>Guardar MP4 en PC</span>
                 </button>
               </div>
@@ -355,17 +355,19 @@ export function CreatePage({
 
             {/* Analysis Progress */}
             {analyzing && (
-              <div className="bg-[#12151c] border border-indigo-500/40 rounded-xl p-4 space-y-2.5">
+              <div className="bg-[#12151c] border border-blue-500/30 rounded-2xl p-5 space-y-2.5">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="inline-flex items-center gap-2 font-medium text-slate-100">
-                    <LoaderCircle className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
+                  <span className="inline-flex items-center gap-2 font-medium text-white">
+                    <LoaderCircle className="w-3.5 h-3.5 text-blue-400 animate-spin" />
                     <span>{analysisStep}</span>
                   </span>
-                  <span className="font-mono-tabular text-indigo-400">{analysisProgress}%</span>
+                  <span className="font-mono-tabular text-blue-400 font-semibold">
+                    {analysisProgress}%
+                  </span>
                 </div>
-                <div className="h-2 bg-[#0b0d11] rounded-full overflow-hidden border border-slate-800">
+                <div className="h-1.5 bg-[#0b0d12] rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-indigo-500 transition-[width] duration-200"
+                    className="h-full bg-blue-500 transition-[width] duration-200"
                     style={{ width: `${analysisProgress}%` }}
                   />
                 </div>
@@ -373,7 +375,7 @@ export function CreatePage({
             )}
 
             {errorMsg && (
-              <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-200">
+              <div className="flex items-start gap-2.5 p-4 rounded-2xl bg-rose-500/10 border border-rose-500/25 text-xs text-rose-200">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
                 <span>{errorMsg}</span>
               </div>
@@ -381,24 +383,24 @@ export function CreatePage({
           </div>
 
           {/* Right Column: Configuration */}
-          <div className="lg:col-span-5 bg-[#12151c] border border-slate-800/90 rounded-xl divide-y divide-slate-800/80">
-            <div className="p-4 space-y-3">
+          <div className="lg:col-span-5 bg-[#12151c] border border-white/[0.06] rounded-2xl divide-y divide-white/[0.06]">
+            <div className="p-5 space-y-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-xs font-semibold text-slate-200">Motor de IA Local (Gratis)</h2>
-                <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400">
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-400">
                   <Cpu className="w-3 h-3" />
                   <span>0 USD</span>
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-1.5 bg-[#0b0d11] p-1 rounded-lg border border-slate-800">
+              <div className="grid grid-cols-2 gap-1 bg-[#0b0d12] p-1 rounded-xl">
                 <button
                   type="button"
                   disabled={analyzing}
                   onClick={() => onChangeAiEngine('whisper-local')}
-                  className={`py-2 px-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                  className={`py-2 px-2 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                     appSettings.aiEngine === 'whisper-local'
-                      ? 'bg-indigo-600 text-white'
-                      : 'text-slate-400 hover:text-slate-200'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-slate-400 hover:text-slate-100'
                   }`}
                 >
                   Whisper Local + Señales
@@ -407,10 +409,10 @@ export function CreatePage({
                   type="button"
                   disabled={analyzing}
                   onClick={() => onChangeAiEngine('acoustic-fast')}
-                  className={`py-2 px-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                  className={`py-2 px-2 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                     appSettings.aiEngine === 'acoustic-fast'
-                      ? 'bg-indigo-600 text-white'
-                      : 'text-slate-400 hover:text-slate-200'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-slate-400 hover:text-slate-100'
                   }`}
                 >
                   Señales Acústicas (Rápido)
@@ -418,11 +420,11 @@ export function CreatePage({
               </div>
             </div>
 
-            <div className="p-4 space-y-2.5">
+            <div className="p-5 space-y-3">
               <h2 className="text-xs font-semibold text-slate-200">
                 Perfiles Comerciales (1 clic)
               </h2>
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="grid grid-cols-2 gap-2">
                 {(
                   [
                     {
@@ -465,7 +467,7 @@ export function CreatePage({
                       onUpdateConfig('subtitlePreset', tpl.preset);
                       onUpdateConfig('autoFaceTrack', tpl.face);
                     }}
-                    className="py-1.5 px-2.5 rounded-md text-left text-[11px] font-medium bg-[#0b0d11] border border-slate-800 text-slate-300 hover:border-indigo-500/60 hover:text-white transition-colors cursor-pointer truncate"
+                    className="py-2 px-3 rounded-xl text-left text-[11px] font-medium bg-[#0b0d12]/80 text-slate-300 hover:bg-[#191f2c] hover:text-white transition-colors cursor-pointer truncate"
                   >
                     {tpl.label}
                   </button>
@@ -473,9 +475,9 @@ export function CreatePage({
               </div>
             </div>
 
-            <div className="p-4 space-y-3.5">
+            <div className="p-5 space-y-3.5">
               <h2 className="text-xs font-semibold text-slate-200">Formato y Encuadre</h2>
-              <div className="grid grid-cols-3 gap-1.5 bg-[#0b0d11] p-1 rounded-lg border border-slate-800">
+              <div className="grid grid-cols-3 gap-1 bg-[#0b0d12] p-1 rounded-xl">
                 {(
                   [
                     { id: '9:16', label: '9:16 Short' },
@@ -488,10 +490,10 @@ export function CreatePage({
                     type="button"
                     disabled={analyzing}
                     onClick={() => onUpdateConfig('ratio', item.id)}
-                    className={`py-1.5 px-2 rounded-md text-xs font-medium cursor-pointer ${
+                    className={`py-1.5 px-2 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                       config.ratio === item.id
-                        ? 'bg-indigo-600 text-white'
-                        : 'text-slate-400 hover:text-slate-200'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-slate-400 hover:text-slate-100'
                     }`}
                   >
                     {item.label}
@@ -499,7 +501,7 @@ export function CreatePage({
                 ))}
               </div>
 
-              <div className="grid grid-cols-3 gap-1.5 bg-[#0b0d11] p-1 rounded-lg border border-slate-800">
+              <div className="grid grid-cols-3 gap-1 bg-[#0b0d12] p-1 rounded-xl">
                 {(
                   [
                     { id: 'cover', label: 'Llenar' },
@@ -512,10 +514,10 @@ export function CreatePage({
                     type="button"
                     disabled={analyzing}
                     onClick={() => onUpdateConfig('framing', f.id)}
-                    className={`py-1.5 px-2 rounded-md text-xs font-medium cursor-pointer ${
+                    className={`py-1.5 px-2 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                       config.framing === f.id
-                        ? 'bg-indigo-600 text-white'
-                        : 'text-slate-400 hover:text-slate-200'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-slate-400 hover:text-slate-100'
                     }`}
                   >
                     {f.label}
@@ -524,10 +526,10 @@ export function CreatePage({
               </div>
             </div>
 
-            <div className="p-4 space-y-3.5">
+            <div className="p-5 space-y-3.5">
               <h2 className="text-xs font-semibold text-slate-200">Clips y Subtítulos</h2>
               <div className="grid grid-cols-2 gap-3">
-                <label className="flex flex-col gap-1">
+                <label className="flex flex-col gap-1.5">
                   <span className="text-[11px] text-slate-400">Duración objetivo</span>
                   <select
                     value={config.targetDuration}
@@ -535,7 +537,7 @@ export function CreatePage({
                     onChange={(e) =>
                       onUpdateConfig('targetDuration', e.target.value as TargetDuration)
                     }
-                    className="bg-[#0b0d11] border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                    className="bg-[#0b0d12] border border-white/[0.06] rounded-xl px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
                   >
                     <option value="auto">Automático</option>
                     <option value="<30s">Menos de 30s</option>
@@ -543,13 +545,13 @@ export function CreatePage({
                   </select>
                 </label>
 
-                <label className="flex flex-col gap-1">
+                <label className="flex flex-col gap-1.5">
                   <span className="text-[11px] text-slate-400">Idioma del audio</span>
                   <select
                     value={config.language}
                     disabled={analyzing}
                     onChange={(e) => onUpdateConfig('language', e.target.value)}
-                    className="bg-[#0b0d11] border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                    className="bg-[#0b0d12] border border-white/[0.06] rounded-xl px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
                   >
                     <option value="es">Español</option>
                     <option value="en">Inglés</option>
@@ -559,7 +561,7 @@ export function CreatePage({
                 </label>
               </div>
 
-              <label className="flex flex-col gap-1">
+              <label className="flex flex-col gap-1.5">
                 <span className="text-[11px] text-slate-400">Plantilla inicial de subtítulos</span>
                 <select
                   value={config.subtitlePreset}
@@ -567,7 +569,7 @@ export function CreatePage({
                   onChange={(e) =>
                     onUpdateConfig('subtitlePreset', e.target.value as SubtitlePresetId)
                   }
-                  className="bg-[#0b0d11] border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                  className="bg-[#0b0d12] border border-white/[0.06] rounded-xl px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
                 >
                   <option value="hormozi">Hormozi (Karaoke Amarillo)</option>
                   <option value="mrbeast">MrBeast (Rebote Alto Impacto)</option>
@@ -585,7 +587,7 @@ export function CreatePage({
                   checked={config.generateProgressBar}
                   disabled={analyzing}
                   onChange={(e) => onUpdateConfig('generateProgressBar', e.target.checked)}
-                  className="w-4 h-4 accent-indigo-500 cursor-pointer"
+                  className="w-4 h-4 accent-blue-500 cursor-pointer"
                 />
               </label>
 
@@ -596,17 +598,17 @@ export function CreatePage({
                   checked={config.autoFaceTrack}
                   disabled={analyzing}
                   onChange={(e) => onUpdateConfig('autoFaceTrack', e.target.checked)}
-                  className="w-4 h-4 accent-indigo-500 cursor-pointer"
+                  className="w-4 h-4 accent-blue-500 cursor-pointer"
                 />
               </label>
             </div>
 
-            <div className="p-4 space-y-2">
+            <div className="p-5 space-y-2.5">
               <button
                 type="button"
                 disabled={!stagedMedia || analyzing}
                 onClick={onAnalyze}
-                className="w-full inline-flex items-center justify-center gap-2 py-3 px-4 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-45 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                className="w-full inline-flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-45 disabled:cursor-not-allowed transition-colors cursor-pointer"
               >
                 <span>
                   {analyzing ? 'Analizando video localmente...' : 'Analizar y Generar Clips'}
@@ -617,9 +619,9 @@ export function CreatePage({
                 type="button"
                 disabled={!stagedMedia || analyzing}
                 onClick={onStartManualClips}
-                className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] disabled:opacity-45 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-medium text-slate-200 bg-[#181c25] hover:bg-[#202633] disabled:opacity-45 disabled:cursor-not-allowed transition-colors cursor-pointer"
               >
-                <Scissors className="w-3.5 h-3.5 text-indigo-400" />
+                <Scissors className="w-3.5 h-3.5 text-blue-400" />
                 <span>Crear Clips Manualmente</span>
               </button>
             </div>

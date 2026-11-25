@@ -11,8 +11,8 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { Innertube } from 'youtubei.js';
-import { buildAssSubtitles, type AssBuilderSettings, type AssSubtitleCue } from './server/assBuilder';
-import { cleanupOrphanedTempFiles } from './server/cleanup';
+import { buildAssSubtitles, type AssBuilderSettings, type AssSubtitleCue } from './server/assBuilder.ts';
+import { cleanupOrphanedTempFiles } from './server/cleanup.ts';
 
 const execFileAsync = promisify(execFile);
 

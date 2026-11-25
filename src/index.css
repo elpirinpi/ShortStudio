@@ -4,6 +4,12 @@
   :root {
     color-scheme: dark;
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    --bg-canvas: #0b0d12;
+    --bg-surface: #12151c;
+    --bg-elevated: #181c25;
+    --border-hairline: rgba(255, 255, 255, 0.06);
+    --accent-cobalt: #2563eb;
+    --accent-cobalt-hover: #3b82f6;
   }
 
   * {
@@ -12,9 +18,18 @@
 
   body {
     margin: 0;
-    background-color: #0b0d11;
+    background-color: #0b0d12;
     color: #f1f5f9;
     user-select: none;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid rgba(59, 130, 246, 0.55);
+    outline-offset: 1px;
   }
 }
 
@@ -23,7 +38,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Custom studio scrollbars */
+/* Studio scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -34,22 +49,22 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2b3242;
+  background: rgba(148, 163, 184, 0.18);
   border-radius: 99px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3f485e;
+  background: rgba(148, 163, 184, 0.34);
 }
 
-/* Studio range sliders */
+/* Studio Cobalt range sliders */
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 5px;
+  height: 4px;
   border-radius: 999px;
-  background: #232938;
+  background: #1e2432;
   outline: none;
   cursor: pointer;
 }
@@ -60,22 +75,22 @@ input[type="range"]::-webkit-slider-thumb {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #6366f1;
-  border: 2px solid #e0e7ff;
+  background: #2563eb;
+  border: 2px solid #dbeafe;
   cursor: pointer;
   transition: transform 0.12s ease, background-color 0.12s ease;
 }
 
 input[type="range"]::-webkit-slider-thumb:hover {
   transform: scale(1.12);
-  background: #818cf8;
+  background: #3b82f6;
 }
 
 input[type="range"]::-moz-range-thumb {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #6366f1;
-  border: 2px solid #e0e7ff;
+  background: #2563eb;
+  border: 2px solid #dbeafe;
   cursor: pointer;
 }

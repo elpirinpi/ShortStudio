@@ -109,10 +109,10 @@ export function SettingsPage({
   };
 
   return (
-    <main className="flex-1 overflow-y-auto bg-[#0b0d11] p-6">
+    <main className="flex-1 overflow-y-auto bg-[#0b0d12] p-6 sm:p-8">
       <div className="max-w-3xl mx-auto space-y-6">
-        <div className="border-b border-slate-800/80 pb-4 space-y-1">
-          <h1 className="text-xl font-bold tracking-tight text-slate-100">
+        <div className="border-b border-white/[0.06] pb-5 space-y-1.5">
+          <h1 className="text-xl font-bold tracking-tight text-white">
             Ajustes de IA Local y Estudio
           </h1>
           <p className="text-xs text-slate-400">
@@ -121,8 +121,8 @@ export function SettingsPage({
           </p>
         </div>
 
-        <section className="bg-[#12151c] border border-slate-800/90 rounded-xl p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-slate-100">Motor de IA Local (0 USD)</h2>
+        <section className="bg-[#12151c] border border-white/[0.06] rounded-2xl p-6 space-y-4">
+          <h2 className="text-sm font-semibold text-white">Motor de IA Local (0 USD)</h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <label className="flex flex-col gap-1.5">
@@ -130,7 +130,7 @@ export function SettingsPage({
               <select
                 value={settings.aiEngine}
                 onChange={(e) => update('aiEngine', e.target.value as AiEngineMode)}
-                className="bg-[#0b0d11] border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                className="bg-[#0b0d12] border border-white/[0.06] rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
               >
                 <option value="whisper-local">Whisper Local + Señales (Gratis)</option>
                 <option value="acoustic-fast">Solo Señales Acústicas (Instantáneo)</option>
@@ -142,7 +142,7 @@ export function SettingsPage({
               <select
                 value={settings.whisperModel}
                 onChange={(e) => update('whisperModel', e.target.value as WhisperModelId)}
-                className="bg-[#0b0d11] border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                className="bg-[#0b0d12] border border-white/[0.06] rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
               >
                 <option value="Xenova/whisper-tiny">Whisper Tiny (~40 MB · Rápido)</option>
                 <option value="Xenova/whisper-base">Whisper Base (~75 MB · Mayor precisión)</option>
@@ -156,8 +156,8 @@ export function SettingsPage({
           </p>
         </section>
 
-        <section className="bg-[#12151c] border border-slate-800/90 rounded-xl p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-slate-100">
+        <section className="bg-[#12151c] border border-white/[0.06] rounded-2xl p-6 space-y-4">
+          <h2 className="text-sm font-semibold text-white">
             Valores Predeterminados de Nuevos Proyectos
           </h2>
 
@@ -167,7 +167,7 @@ export function SettingsPage({
               <select
                 value={settings.defaultLanguage}
                 onChange={(e) => update('defaultLanguage', e.target.value)}
-                className="bg-[#0b0d11] border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                className="bg-[#0b0d12] border border-white/[0.06] rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
               >
                 <option value="es">Español</option>
                 <option value="en">Inglés</option>
@@ -181,7 +181,7 @@ export function SettingsPage({
               <select
                 value={settings.defaultRatio}
                 onChange={(e) => update('defaultRatio', e.target.value as TargetRatio)}
-                className="bg-[#0b0d11] border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                className="bg-[#0b0d12] border border-white/[0.06] rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
               >
                 <option value="9:16">9:16 Vertical (Shorts / TikTok)</option>
                 <option value="1:1">1:1 Cuadrado</option>
@@ -194,7 +194,7 @@ export function SettingsPage({
               <select
                 value={settings.defaultFraming}
                 onChange={(e) => update('defaultFraming', e.target.value as FitMode)}
-                className="bg-[#0b0d11] border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                className="bg-[#0b0d12] border border-white/[0.06] rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
               >
                 <option value="cover">Llenar (Crop)</option>
                 <option value="blur">Fondo Desenfocado</option>
@@ -207,7 +207,7 @@ export function SettingsPage({
               <select
                 value={settings.defaultPreset}
                 onChange={(e) => update('defaultPreset', e.target.value as SubtitlePresetId)}
-                className="bg-[#0b0d11] border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                className="bg-[#0b0d12] border border-white/[0.06] rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
               >
                 <option value="hormozi">Hormozi</option>
                 <option value="mrbeast">MrBeast</option>
@@ -220,11 +220,11 @@ export function SettingsPage({
           </div>
         </section>
 
-        <section className="bg-[#12151c] border border-slate-800/90 rounded-xl p-5 flex flex-wrap items-center justify-between gap-4">
+        <section className="bg-[#12151c] border border-white/[0.06] rounded-2xl p-6 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-start gap-3">
             <HardDrive className="w-5 h-5 text-slate-400 mt-0.5" />
             <div className="space-y-1">
-              <h2 className="text-sm font-semibold text-slate-100">
+              <h2 className="text-sm font-semibold text-white">
                 {isDesktopApp ? 'Almacenamiento en Disco PC + IndexedDB' : 'Almacenamiento Local (IndexedDB)'}
               </h2>
               <p className="text-xs font-mono-tabular text-slate-400">
@@ -243,7 +243,7 @@ export function SettingsPage({
               type="button"
               disabled={projectsCount === 0}
               onClick={() => setConfirmClear(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium text-rose-300 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 disabled:opacity-40 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium text-rose-300 bg-rose-500/10 border border-rose-500/25 hover:bg-rose-500/20 disabled:opacity-40 cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span>Limpiar Proyectos</span>
@@ -253,7 +253,7 @@ export function SettingsPage({
               <button
                 type="button"
                 onClick={() => setConfirmClear(false)}
-                className="px-3 py-1.5 rounded-lg text-xs text-slate-300 bg-[#191d26] border border-slate-800 cursor-pointer"
+                className="px-3 py-1.5 rounded-xl text-xs text-slate-300 bg-[#181c25] hover:bg-[#222836] cursor-pointer"
               >
                 Cancelar
               </button>
@@ -263,7 +263,7 @@ export function SettingsPage({
                   await onClearAllData();
                   setConfirmClear(false);
                 }}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 cursor-pointer"
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 cursor-pointer"
               >
                 Confirmar borrado
               </button>
@@ -271,12 +271,12 @@ export function SettingsPage({
           )}
         </section>
 
-        <section className="bg-[#12151c] border border-slate-800/90 rounded-xl p-5 flex flex-wrap items-center justify-between gap-4">
+        <section className="bg-[#12151c] border border-white/[0.06] rounded-2xl p-6 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-start gap-3">
-            <User className="w-5 h-5 text-indigo-400 mt-0.5" />
+            <User className="w-5 h-5 text-blue-400 mt-0.5" />
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-sm font-semibold text-slate-100">Cuenta y Nube Supabase</h2>
+                <h2 className="text-sm font-semibold text-white">Cuenta y Nube Supabase</h2>
                 <span
                   className={`inline-flex items-center gap-1 text-[11px] font-medium ${
                     cloudSyncStatus === 'synced'
@@ -316,7 +316,7 @@ export function SettingsPage({
               <button
                 type="button"
                 onClick={handleCopySql}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-amber-200 bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-amber-200 bg-amber-500/10 border border-amber-500/25 hover:bg-amber-500/20 cursor-pointer"
               >
                 {copiedSql ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 <span>{copiedSql ? 'SQL Copiado' : 'Copiar SQL Supabase'}</span>
@@ -325,7 +325,7 @@ export function SettingsPage({
             <button
               type="button"
               onClick={onSignOut}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium text-slate-200 bg-[#181c25] hover:bg-[#222836] cursor-pointer transition-colors"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span>Cerrar Sesión</span>
@@ -333,11 +333,11 @@ export function SettingsPage({
           </div>
         </section>
 
-        <section className="bg-[#12151c] border border-slate-800/90 rounded-xl p-5 flex flex-wrap items-center justify-between gap-4">
+        <section className="bg-[#12151c] border border-white/[0.06] rounded-2xl p-6 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-start gap-3">
-            <RefreshCw className="w-5 h-5 text-indigo-400 mt-0.5" />
+            <RefreshCw className="w-5 h-5 text-blue-400 mt-0.5" />
             <div className="space-y-1">
-              <h2 className="text-sm font-semibold text-slate-100">
+              <h2 className="text-sm font-semibold text-white">
                 Actualizaciones Automáticas (GitHub)
               </h2>
               {desktopUpdateState ? (
@@ -381,7 +381,7 @@ export function SettingsPage({
                   <button
                     type="button"
                     onClick={onDownloadUpdate}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5" />
                     <span>Descargar v{desktopUpdateState.latestVersion}</span>
@@ -392,7 +392,7 @@ export function SettingsPage({
                     <button
                       type="button"
                       onClick={onInstallUpdate}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 cursor-pointer"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
                       <span>Actualizar y reiniciar</span>
@@ -401,7 +401,7 @@ export function SettingsPage({
                       <button
                         type="button"
                         onClick={onOpenUpdateFolder}
-                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-slate-200 bg-[#181c25] hover:bg-[#222836] cursor-pointer"
                       >
                         <FolderOpen className="w-3.5 h-3.5" />
                         <span>Abrir carpeta</span>
@@ -417,7 +417,7 @@ export function SettingsPage({
                     desktopUpdateState.status === 'installing'
                   }
                   onClick={onCheckForUpdates}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] disabled:opacity-50 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium text-slate-200 bg-[#181c25] hover:bg-[#222836] disabled:opacity-50 cursor-pointer transition-colors"
                 >
                   {desktopUpdateState.status === 'checking' ||
                   desktopUpdateState.status === 'downloading' ? (
@@ -431,7 +431,7 @@ export function SettingsPage({
                   <button
                     type="button"
                     onClick={onOpenReleasePage}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs text-slate-300 bg-[#0b0d11] border border-slate-800 hover:text-white cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs text-slate-300 bg-[#0b0d12] hover:text-white cursor-pointer"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                     <span>Releases</span>
@@ -443,7 +443,7 @@ export function SettingsPage({
                 href="https://github.com/elpirinpi/ShortStudio/releases"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733]"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium text-slate-200 bg-[#181c25] hover:bg-[#222836] transition-colors"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
                 <span>Ver Releases (.exe)</span>
@@ -452,11 +452,11 @@ export function SettingsPage({
           </div>
         </section>
 
-        <section className="bg-[#12151c] border border-slate-800/90 rounded-xl p-5 flex flex-wrap items-center justify-between gap-4">
+        <section className="bg-[#12151c] border border-white/[0.06] rounded-2xl p-6 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-start gap-3">
             <Code2 className="w-5 h-5 text-emerald-400 mt-0.5" />
             <div className="space-y-1">
-              <h2 className="text-sm font-semibold text-slate-100">Créditos del Desarrollador</h2>
+              <h2 className="text-sm font-semibold text-white">Créditos del Desarrollador</h2>
               <p className="text-xs text-slate-300">
                 Desarrollado por{' '}
                 <span className="font-semibold text-white">Kelly Benjamin De La Cruz</span>

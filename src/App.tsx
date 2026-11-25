@@ -1610,7 +1610,7 @@ export default function App() {
 
   if (authLoading) {
     return (
-      <div className="h-screen w-screen bg-[#0b0d11] text-slate-300 flex items-center justify-center text-xs">
+      <div className="h-screen w-screen bg-[#0b0d12] text-slate-300 flex items-center justify-center text-xs">
         Verificando sesión...
       </div>
     );
@@ -1618,7 +1618,7 @@ export default function App() {
 
   if (!authSession) {
     return (
-      <div className="min-h-screen w-screen flex flex-col bg-[#0b0d11]">
+      <div className="min-h-screen w-screen flex flex-col bg-[#0b0d12]">
         <UpdateBanner
           updateState={desktopUpdateState}
           onDownload={handleDownloadUpdate}
@@ -1634,7 +1634,7 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen w-screen overflow-hidden flex flex-col bg-[#0b0d11] text-slate-100">
+    <div className="h-screen w-screen overflow-hidden flex flex-col bg-[#0b0d12] text-slate-100">
       <UpdateBanner
         updateState={desktopUpdateState}
         onDownload={handleDownloadUpdate}
@@ -1850,7 +1850,7 @@ export default function App() {
         }}
       />
 
-      <footer className="h-7 shrink-0 bg-[#0d1016] border-t border-slate-800/80 px-4 flex items-center justify-between text-[11px] text-slate-500">
+      <footer className="h-7 shrink-0 bg-[#0b0d12] border-t border-white/[0.06] px-6 flex items-center justify-between text-[11px] text-slate-500">
         <span>
           KellyClipAi Studio · Desarrollado por{' '}
           <span className="text-slate-300 font-medium">Kelly Benjamin De La Cruz</span>
@@ -1861,7 +1861,7 @@ export default function App() {
       </footer>
 
       {toastMsg && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-[#1a1e28] border border-slate-700 text-slate-100 px-4 py-2 rounded-lg text-xs font-medium shadow-xl z-50 pointer-events-none">
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-[#161b24] border border-blue-500/30 text-slate-100 px-4 py-2 rounded-xl text-xs font-medium shadow-2xl z-50 pointer-events-none">
           {toastMsg}
         </div>
       )}

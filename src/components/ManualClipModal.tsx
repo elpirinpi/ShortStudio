@@ -166,13 +166,13 @@ export function ManualClipModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 overflow-y-auto">
-      <div className="w-full max-w-3xl bg-[#12151c] border border-slate-800 rounded-2xl shadow-2xl overflow-hidden my-auto">
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+      <div className="w-full max-w-3xl bg-[#12151c] border border-white/[0.08] rounded-2xl shadow-2xl overflow-hidden my-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06]">
           <div className="flex items-center gap-2.5 min-w-0">
-            <Scissors className="w-4 h-4 text-indigo-400 shrink-0" />
+            <Scissors className="w-4 h-4 text-blue-400 shrink-0" />
             <div className="min-w-0">
-              <h2 className="text-sm font-semibold text-slate-100 truncate">
+              <h2 className="text-sm font-semibold text-white truncate">
                 Crear Clip Manualmente
               </h2>
               <p className="text-[11px] text-slate-400 truncate">
@@ -184,16 +184,16 @@ export function ManualClipModal({
             type="button"
             disabled={creating}
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-40 cursor-pointer"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] disabled:opacity-40 cursor-pointer"
             aria-label="Cerrar"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="p-6 space-y-4">
           {/* Interactive Video Preview */}
-          <div className="bg-[#0b0d11] border border-slate-800 rounded-xl overflow-hidden">
+          <div className="bg-[#0b0d12] rounded-xl overflow-hidden">
             {mediaUrl && !project.isDemo ? (
               <div className="relative aspect-video max-h-[280px] w-full bg-black flex items-center justify-center">
                 <video
@@ -230,7 +230,7 @@ export function ManualClipModal({
               </div>
             ) : (
               <div className="h-32 flex flex-col items-center justify-center gap-1.5 text-center px-4">
-                <Sparkles className="w-5 h-5 text-indigo-400" />
+                <Sparkles className="w-5 h-5 text-blue-400" />
                 <p className="text-xs font-medium text-slate-200">
                   Selector de rango de tiempo ({formatTime(startSec)} → {formatTime(endSec)})
                 </p>
@@ -241,15 +241,15 @@ export function ManualClipModal({
             )}
 
             {/* Interactive Range Track */}
-            <div className="p-3.5 space-y-2 border-t border-slate-800/80">
+            <div className="p-3.5 space-y-2.5 border-t border-white/[0.06]">
               <div
                 ref={trackRef}
                 onClick={handleTrackClick}
                 title="Haz clic para mover el cabezal de reproducción"
-                className="relative h-7 bg-[#141821] border border-slate-800 rounded-lg cursor-pointer overflow-hidden"
+                className="relative h-7 bg-[#141821] rounded-lg cursor-pointer overflow-hidden"
               >
                 <div
-                  className="absolute top-0 bottom-0 bg-indigo-600/35 border-x-2 border-indigo-400"
+                  className="absolute top-0 bottom-0 bg-blue-600/35 border-x-2 border-blue-400"
                   style={{ left: `${startPct}%`, width: `${widthPct}%` }}
                 />
                 <div
@@ -264,7 +264,7 @@ export function ManualClipModal({
                     type="button"
                     disabled={creating}
                     onClick={() => clampStart(currentTime)}
-                    className="px-2.5 py-1 rounded-md font-medium bg-[#191d26] border border-slate-700 text-slate-200 hover:border-indigo-500 cursor-pointer"
+                    className="px-2.5 py-1 rounded-lg font-medium bg-[#181c25] text-slate-200 hover:bg-[#222836] cursor-pointer"
                   >
                     Marcar Inicio ({formatTime(currentTime)})
                   </button>
@@ -272,7 +272,7 @@ export function ManualClipModal({
                     type="button"
                     disabled={creating}
                     onClick={() => clampEnd(currentTime)}
-                    className="px-2.5 py-1 rounded-md font-medium bg-[#191d26] border border-slate-700 text-slate-200 hover:border-indigo-500 cursor-pointer"
+                    className="px-2.5 py-1 rounded-lg font-medium bg-[#181c25] text-slate-200 hover:bg-[#222836] cursor-pointer"
                   >
                     Marcar Fin ({formatTime(currentTime)})
                   </button>
@@ -283,7 +283,7 @@ export function ManualClipModal({
                     type="checkbox"
                     checked={loopPreview}
                     onChange={(e) => setLoopPreview(e.target.checked)}
-                    className="w-3.5 h-3.5 accent-indigo-500 cursor-pointer"
+                    className="w-3.5 h-3.5 accent-blue-500 cursor-pointer"
                   />
                   <span>Repetir selección</span>
                 </label>
@@ -293,17 +293,17 @@ export function ManualClipModal({
 
           {/* Exact Start / End Controls + Quick Duration */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="bg-[#0b0d11] border border-slate-800 rounded-xl p-3 space-y-2">
+            <div className="bg-[#0b0d12] rounded-xl p-3.5 space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-medium text-slate-300">Inicio (seg)</span>
-                <span className="font-mono-tabular text-indigo-400">{formatTime(startSec)}</span>
+                <span className="font-mono-tabular text-blue-400">{formatTime(startSec)}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   disabled={creating}
                   onClick={() => clampStart(startSec - 1)}
-                  className="px-2 py-1.5 rounded-lg text-xs bg-[#191d26] border border-slate-800 text-slate-300 hover:bg-[#222733] cursor-pointer"
+                  className="px-2.5 py-1.5 rounded-lg text-xs bg-[#181c25] text-slate-300 hover:bg-[#222836] cursor-pointer"
                 >
                   -1s
                 </button>
@@ -315,23 +315,23 @@ export function ManualClipModal({
                   value={startSec}
                   disabled={creating}
                   onChange={(e) => clampStart(Number(e.target.value) || 0)}
-                  className="flex-1 min-w-0 bg-[#12151c] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono-tabular text-slate-100 focus:outline-none focus:border-indigo-500"
+                  className="flex-1 min-w-0 bg-[#12151c] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-xs font-mono-tabular text-slate-100 focus:outline-none focus:border-blue-500/70"
                 />
                 <button
                   type="button"
                   disabled={creating}
                   onClick={() => clampStart(startSec + 1)}
-                  className="px-2 py-1.5 rounded-lg text-xs bg-[#191d26] border border-slate-800 text-slate-300 hover:bg-[#222733] cursor-pointer"
+                  className="px-2.5 py-1.5 rounded-lg text-xs bg-[#181c25] text-slate-300 hover:bg-[#222836] cursor-pointer"
                 >
                   +1s
                 </button>
               </div>
             </div>
 
-            <div className="bg-[#0b0d11] border border-slate-800 rounded-xl p-3 space-y-2">
+            <div className="bg-[#0b0d12] rounded-xl p-3.5 space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-medium text-slate-300">Fin (seg)</span>
-                <span className="font-mono-tabular text-indigo-400">
+                <span className="font-mono-tabular text-blue-400">
                   {formatTime(endSec)} · Duración {clipDuration.toFixed(1)}s
                 </span>
               </div>
@@ -340,7 +340,7 @@ export function ManualClipModal({
                   type="button"
                   disabled={creating}
                   onClick={() => clampEnd(endSec - 1)}
-                  className="px-2 py-1.5 rounded-lg text-xs bg-[#191d26] border border-slate-800 text-slate-300 hover:bg-[#222733] cursor-pointer"
+                  className="px-2.5 py-1.5 rounded-lg text-xs bg-[#181c25] text-slate-300 hover:bg-[#222836] cursor-pointer"
                 >
                   -1s
                 </button>
@@ -352,13 +352,13 @@ export function ManualClipModal({
                   value={endSec}
                   disabled={creating}
                   onChange={(e) => clampEnd(Number(e.target.value) || totalDuration)}
-                  className="flex-1 min-w-0 bg-[#12151c] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono-tabular text-slate-100 focus:outline-none focus:border-indigo-500"
+                  className="flex-1 min-w-0 bg-[#12151c] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-xs font-mono-tabular text-slate-100 focus:outline-none focus:border-blue-500/70"
                 />
                 <button
                   type="button"
                   disabled={creating}
                   onClick={() => clampEnd(endSec + 1)}
-                  className="px-2 py-1.5 rounded-lg text-xs bg-[#191d26] border border-slate-800 text-slate-300 hover:bg-[#222733] cursor-pointer"
+                  className="px-2.5 py-1.5 rounded-lg text-xs bg-[#181c25] text-slate-300 hover:bg-[#222836] cursor-pointer"
                 >
                   +1s
                 </button>
@@ -377,7 +377,7 @@ export function ManualClipModal({
                     type="button"
                     disabled={creating}
                     onClick={() => applyDurationPreset(len)}
-                    className="py-1.5 rounded-md text-[11px] font-medium bg-[#191d26] border border-slate-800 text-slate-300 hover:border-indigo-500 hover:text-white cursor-pointer"
+                    className="py-1.5 rounded-lg text-[11px] font-medium bg-[#181c25] text-slate-300 hover:bg-blue-600 hover:text-white cursor-pointer transition-colors"
                   >
                     {len === 'all' ? 'Todo' : `${len}s`}
                   </button>
@@ -393,13 +393,13 @@ export function ManualClipModal({
                 disabled={creating}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder={`Clip Manual #${project.clips.length + 1} (${Math.floor(startSec)}s–${Math.ceil(endSec)}s)`}
-                className="w-full bg-[#0b0d11] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0b0d12] border border-white/[0.06] rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
               />
             </label>
           </div>
 
           {/* Optional AI Enhancements for this manual clip */}
-          <div className="bg-[#0b0d11] border border-slate-800 rounded-xl p-3 space-y-2">
+          <div className="bg-[#0b0d12] rounded-xl p-3.5 space-y-2.5">
             {existingTranscriptMatches > 0 ? (
               <p className="text-[11px] text-emerald-400">
                 Subtítulos listos: se reutilizarán automáticamente {existingTranscriptMatches}{' '}
@@ -413,7 +413,7 @@ export function ManualClipModal({
                   checked={transcribeAudio}
                   disabled={creating}
                   onChange={(e) => setTranscribeAudio(e.target.checked)}
-                  className="w-4 h-4 accent-indigo-500 cursor-pointer"
+                  className="w-4 h-4 accent-blue-500 cursor-pointer"
                 />
               </label>
             ) : null}
@@ -425,23 +425,23 @@ export function ManualClipModal({
                 checked={trackFaces}
                 disabled={creating}
                 onChange={(e) => setTrackFaces(e.target.checked)}
-                className="w-4 h-4 accent-indigo-500 cursor-pointer"
+                className="w-4 h-4 accent-blue-500 cursor-pointer"
               />
             </label>
           </div>
 
           {creating && (
-            <div className="bg-[#0b0d11] border border-indigo-500/40 rounded-xl p-3 space-y-2">
+            <div className="bg-[#0b0d12] border border-blue-500/35 rounded-xl p-3.5 space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="inline-flex items-center gap-2 text-slate-200">
-                  <LoaderCircle className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                  <LoaderCircle className="w-3.5 h-3.5 animate-spin text-blue-400" />
                   <span>{progressLabel || 'Creando clip manual...'}</span>
                 </span>
-                <span className="font-mono-tabular text-indigo-400">{progressPercent}%</span>
+                <span className="font-mono-tabular text-blue-400">{progressPercent}%</span>
               </div>
-              <div className="h-1.5 bg-[#12151c] rounded-full overflow-hidden border border-slate-800">
+              <div className="h-1.5 bg-[#161a24] rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-indigo-500 transition-[width] duration-200"
+                  className="h-full bg-blue-500 transition-[width] duration-200"
                   style={{ width: `${Math.max(4, progressPercent)}%` }}
                 />
               </div>
@@ -449,19 +449,19 @@ export function ManualClipModal({
           )}
 
           {errorMsg && (
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-xs text-rose-200">
+            <div className="flex items-start gap-2 p-3 rounded-xl bg-rose-500/10 border border-rose-500/25 text-xs text-rose-200">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
               <span>{errorMsg}</span>
             </div>
           )}
         </div>
 
-        <div className="px-5 py-3.5 bg-[#0e1117] border-t border-slate-800 flex flex-wrap items-center justify-end gap-2">
+        <div className="px-6 py-4 bg-[#0e1118] border-t border-white/[0.06] flex flex-wrap items-center justify-end gap-2.5">
           <button
             type="button"
             disabled={creating}
             onClick={onClose}
-            className="px-3.5 py-2 rounded-lg text-xs font-medium text-slate-300 bg-[#191d26] border border-slate-800 hover:bg-[#222733] disabled:opacity-45 cursor-pointer"
+            className="px-3.5 py-2 rounded-xl text-xs font-medium text-slate-300 bg-[#181c25] hover:bg-[#222836] disabled:opacity-45 cursor-pointer"
           >
             Cancelar
           </button>
@@ -469,7 +469,7 @@ export function ManualClipModal({
             type="button"
             disabled={creating}
             onClick={() => handleSubmit(false)}
-            className="px-4 py-2 rounded-lg text-xs font-medium text-slate-100 bg-[#191d26] border border-slate-700 hover:bg-[#222733] disabled:opacity-45 cursor-pointer"
+            className="px-4 py-2 rounded-xl text-xs font-medium text-slate-100 bg-[#181c25] hover:bg-[#222836] disabled:opacity-45 cursor-pointer"
           >
             Agregar a Resultados
           </button>
@@ -477,7 +477,7 @@ export function ManualClipModal({
             type="button"
             disabled={creating}
             onClick={() => handleSubmit(true)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-45 cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-45 cursor-pointer"
           >
             <Scissors className="w-3.5 h-3.5" />
             <span>Crear y Abrir en Editor</span>

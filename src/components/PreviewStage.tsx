@@ -86,11 +86,11 @@ export function PreviewStage({
   };
 
   return (
-    <main className="flex-1 min-w-0 flex flex-col items-center justify-between py-3 px-4 bg-[#0b0d11] relative">
+    <main className="flex-1 min-w-0 flex flex-col items-center justify-between py-3 px-4 bg-[#080a0e] relative">
       {/* Safe Zone Guide Switcher */}
-      <div className="flex items-center gap-1 bg-[#12151c] border border-slate-800/90 p-1 rounded-lg z-10">
-        <span className="text-[11px] font-medium text-slate-400 px-2 whitespace-nowrap">
-          Zonas seguras:
+      <div className="flex items-center gap-1 bg-[#12151c]/95 border border-white/[0.07] p-1 rounded-xl z-10">
+        <span className="text-[11px] font-medium text-slate-400 px-2.5 whitespace-nowrap">
+          Zonas seguras
         </span>
         {(
           [
@@ -104,24 +104,24 @@ export function PreviewStage({
             key={sz.id}
             type="button"
             onClick={() => onSafeZoneChange(sz.id)}
-            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
               safeZone === sz.id
-                ? 'bg-indigo-600 text-white'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-blue-600 text-white'
+                : 'text-slate-400 hover:text-slate-100'
             }`}
           >
             {sz.label}
           </button>
         ))}
-        <span className="h-4 w-px bg-slate-800 mx-0.5" aria-hidden="true" />
+        <span className="h-4 w-px bg-white/[0.08] mx-0.5" aria-hidden="true" />
         <button
           type="button"
           onClick={onToggleFaceGuide}
           title="Mostrar u ocultar guía visual del seguimiento de rostro (no se exporta)"
-          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
             showFaceGuide && faceTrackingEnabled
-              ? 'bg-emerald-600/25 text-emerald-300 border border-emerald-500/40'
-              : 'text-slate-400 hover:text-slate-200'
+              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/35'
+              : 'text-slate-400 hover:text-slate-100'
           }`}
         >
           <ScanFace className="w-3.5 h-3.5" />
@@ -143,8 +143,8 @@ export function PreviewStage({
             const file = e.dataTransfer.files?.[0];
             if (file) onDropFile(file);
           }}
-          className={`relative ${aspectClass} bg-black rounded-xl overflow-hidden shadow-2xl border transition-colors ${
-            isDragOver ? 'border-indigo-500 ring-2 ring-indigo-500/40' : 'border-slate-800'
+          className={`relative ${aspectClass} bg-black rounded-2xl overflow-hidden shadow-2xl border transition-colors ${
+            isDragOver ? 'border-blue-500 ring-2 ring-blue-500/35' : 'border-white/[0.08]'
           }`}
         >
           <canvas
@@ -159,12 +159,12 @@ export function PreviewStage({
 
           {/* Empty State Overlay */}
           {!hasMediaOrDemo && (
-            <div className="absolute inset-0 bg-[#0b0d11]/90 flex flex-col items-center justify-center text-center p-6 gap-4 z-10">
-              <div className="w-12 h-12 rounded-xl bg-[#191d26] border border-slate-800 flex items-center justify-center">
-                <Film className="w-6 h-6 text-indigo-400" />
+            <div className="absolute inset-0 bg-[#0b0d12]/92 flex flex-col items-center justify-center text-center p-6 gap-4 z-10">
+              <div className="w-12 h-12 rounded-2xl bg-blue-500/12 flex items-center justify-center">
+                <Film className="w-6 h-6 text-blue-400" />
               </div>
               <div className="space-y-1.5 max-w-[230px]">
-                <h3 className="text-sm font-semibold text-slate-100">
+                <h3 className="text-sm font-semibold text-white">
                   Sube tu video o inicia con el demo
                 </h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
@@ -175,7 +175,7 @@ export function PreviewStage({
                 <button
                   type="button"
                   onClick={onChooseVideo}
-                  className="inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer"
+                  className="inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 transition-colors cursor-pointer"
                 >
                   <Upload className="w-3.5 h-3.5" />
                   <span>Elegir Video</span>
@@ -183,7 +183,7 @@ export function PreviewStage({
                 <button
                   type="button"
                   onClick={onLoadDemo}
-                  className="inline-flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] transition-colors cursor-pointer"
+                  className="inline-flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-medium text-slate-200 bg-[#181c25] hover:bg-[#222836] transition-colors cursor-pointer"
                 >
                   <span>Probar Clip Demo</span>
                 </button>
@@ -260,12 +260,12 @@ export function PreviewStage({
       </div>
 
       {/* Transport Controls */}
-      <div className="flex items-center gap-2 bg-[#12151c] border border-slate-800/90 px-3 py-1.5 rounded-lg">
+      <div className="flex items-center gap-2 bg-[#12151c] border border-white/[0.07] px-3 py-1.5 rounded-xl">
         <button
           type="button"
           onClick={onSetIn}
           title="Marcar inicio (Tecla I)"
-          className="px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-300 hover:text-white hover:bg-[#1e232e] transition-colors whitespace-nowrap cursor-pointer"
+          className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-white/[0.06] transition-colors whitespace-nowrap cursor-pointer"
         >
           [ In
         </button>
@@ -273,7 +273,7 @@ export function PreviewStage({
         <button
           type="button"
           onClick={onTogglePlay}
-          className="inline-flex items-center justify-center gap-1.5 min-w-[92px] px-3 py-1.5 rounded-md text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors whitespace-nowrap cursor-pointer"
+          className="inline-flex items-center justify-center gap-1.5 min-w-[92px] px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 transition-colors whitespace-nowrap cursor-pointer"
         >
           {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
           <span>{isPlaying ? 'Pausa' : 'Play'}</span>
@@ -283,7 +283,7 @@ export function PreviewStage({
           type="button"
           onClick={onSetOut}
           title="Marcar fin (Tecla O)"
-          className="px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-300 hover:text-white hover:bg-[#1e232e] transition-colors whitespace-nowrap cursor-pointer"
+          className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-white/[0.06] transition-colors whitespace-nowrap cursor-pointer"
         >
           Out ]
         </button>
@@ -296,10 +296,10 @@ export function PreviewStage({
           type="button"
           onClick={onToggleLoop}
           title="Reproducción en bucle"
-          className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+          className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
             loop
-              ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/40'
-              : 'text-slate-400 hover:text-slate-200'
+              ? 'bg-blue-600/20 text-blue-300 border border-blue-500/35'
+              : 'text-slate-400 hover:text-slate-100 hover:bg-white/[0.05]'
           }`}
         >
           <Repeat className="w-3.5 h-3.5" />

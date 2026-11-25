@@ -175,8 +175,8 @@ export function LeftSidebar({
   };
 
   return (
-    <aside className="w-[316px] shrink-0 bg-[#12151c] border-r border-slate-800/90 flex flex-col min-h-0">
-      <div className="flex border-b border-slate-800/90 bg-[#0f1218]">
+    <aside className="w-[316px] shrink-0 bg-[#12151c] border-r border-white/[0.06] flex flex-col min-h-0">
+      <div className="flex border-b border-white/[0.06] bg-[#0e1118]">
         {(
           [
             { id: 'format', label: 'Encuadre' },
@@ -188,10 +188,10 @@ export function LeftSidebar({
             key={tab.id}
             type="button"
             onClick={() => onTabChange(tab.id)}
-            className={`flex-1 py-2.5 px-2 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
+            className={`flex-1 py-3 px-2 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
               activeTab === tab.id
-                ? 'text-slate-100 border-indigo-500 bg-[#12151c]'
-                : 'text-slate-400 border-transparent hover:text-slate-200'
+                ? 'text-white border-blue-500 bg-[#12151c]'
+                : 'text-slate-400 border-transparent hover:text-slate-100'
             }`}
           >
             {tab.label}
@@ -199,23 +199,23 @@ export function LeftSidebar({
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto divide-y divide-slate-800/80">
+      <div className="flex-1 overflow-y-auto divide-y divide-white/[0.06]">
         {activeTab === 'format' && (
           <>
             <section className="p-4 flex flex-col gap-3.5">
               <div className="flex items-center justify-between">
-                <h2 className="text-xs font-semibold text-slate-300">Formato y Encuadre</h2>
+                <h2 className="text-xs font-semibold text-slate-200">Formato y Encuadre</h2>
                 <button
                   type="button"
                   onClick={onResetFraming}
-                  className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-slate-200 cursor-pointer"
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-slate-100 cursor-pointer"
                 >
                   <RotateCcw className="w-3 h-3" />
                   <span>Restablecer</span>
                 </button>
               </div>
 
-              <div className="grid grid-cols-3 gap-1.5 bg-[#0b0d11] p-1 rounded-lg border border-slate-800/80">
+              <div className="grid grid-cols-3 gap-1 bg-[#0b0d12] p-1 rounded-xl">
                 {(
                   [
                     { id: '9:16', label: '9:16 Short' },
@@ -227,10 +227,10 @@ export function LeftSidebar({
                     key={r.id}
                     type="button"
                     onClick={() => onUpdateSetting('ratio', r.id)}
-                    className={`py-1.5 px-1.5 rounded-md text-[11px] font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                    className={`py-1.5 px-1.5 rounded-lg text-[11px] font-medium transition-colors whitespace-nowrap cursor-pointer ${
                       settings.ratio === r.id
-                        ? 'bg-indigo-600 text-white'
-                        : 'text-slate-400 hover:text-slate-200'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-slate-400 hover:text-slate-100'
                     }`}
                   >
                     {r.label}
@@ -238,7 +238,7 @@ export function LeftSidebar({
                 ))}
               </div>
 
-              <div className="grid grid-cols-3 gap-1.5 bg-[#0b0d11] p-1 rounded-lg border border-slate-800/80">
+              <div className="grid grid-cols-3 gap-1 bg-[#0b0d12] p-1 rounded-xl">
                 {(
                   [
                     { id: 'cover', label: 'Llenar' },
@@ -250,10 +250,10 @@ export function LeftSidebar({
                     key={mode.id}
                     type="button"
                     onClick={() => onUpdateSetting('fitMode', mode.id)}
-                    className={`py-1.5 px-2 rounded-md text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                    className={`py-1.5 px-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
                       settings.fitMode === mode.id
-                        ? 'bg-indigo-600 text-white'
-                        : 'text-slate-400 hover:text-slate-200'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-slate-400 hover:text-slate-100'
                     }`}
                   >
                     {mode.label}
@@ -264,7 +264,7 @@ export function LeftSidebar({
               <div className="flex flex-col gap-1.5">
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-300">Zoom</span>
-                  <span className="font-mono-tabular text-indigo-400">{settings.zoom}%</span>
+                  <span className="font-mono-tabular text-blue-400">{settings.zoom}%</span>
                 </div>
                 <input
                   type="range"
@@ -278,7 +278,7 @@ export function LeftSidebar({
               <div className="flex flex-col gap-1.5">
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-300">Posición X</span>
-                  <span className="font-mono-tabular text-indigo-400">{settings.panX}%</span>
+                  <span className="font-mono-tabular text-blue-400">{settings.panX}%</span>
                 </div>
                 <input
                   type="range"
@@ -292,7 +292,7 @@ export function LeftSidebar({
               <div className="flex flex-col gap-1.5">
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-300">Posición Y</span>
-                  <span className="font-mono-tabular text-indigo-400">{settings.panY}%</span>
+                  <span className="font-mono-tabular text-blue-400">{settings.panY}%</span>
                 </div>
                 <input
                   type="range"
@@ -309,14 +309,14 @@ export function LeftSidebar({
                   type="checkbox"
                   checked={settings.rounded}
                   onChange={(e) => onUpdateSetting('rounded', e.target.checked)}
-                  className="w-4 h-4 accent-indigo-500 cursor-pointer"
+                  className="w-4 h-4 accent-blue-500 cursor-pointer"
                 />
               </label>
             </section>
 
             <section className="p-4 flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <h2 className="text-xs font-semibold text-slate-300">Seguimiento de Rostro (IA)</h2>
+                <h2 className="text-xs font-semibold text-slate-200">Seguimiento de Rostro (IA)</h2>
                 {settings.faceKeyframes.length > 0 && (
                   <button
                     type="button"
@@ -340,7 +340,7 @@ export function LeftSidebar({
                       onRunFaceTracking();
                     }
                   }}
-                  className="w-4 h-4 accent-indigo-500 cursor-pointer"
+                  className="w-4 h-4 accent-blue-500 cursor-pointer"
                 />
               </label>
 
@@ -348,7 +348,7 @@ export function LeftSidebar({
                 type="button"
                 disabled={!hasMediaOrDemo || trackingFaces}
                 onClick={onRunFaceTracking}
-                className="w-full inline-flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-45 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                className="w-full inline-flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-45 disabled:cursor-not-allowed transition-colors cursor-pointer"
               >
                 {trackingFaces ? (
                   <LoaderCircle className="w-3.5 h-3.5 animate-spin" />
@@ -366,9 +366,9 @@ export function LeftSidebar({
 
               {trackingFaces && (
                 <div className="space-y-1.5">
-                  <div className="h-1.5 bg-[#0b0d11] rounded-full overflow-hidden border border-slate-800">
+                  <div className="h-1.5 bg-[#0b0d12] rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-indigo-500 transition-[width] duration-150"
+                      className="h-full bg-blue-500 transition-[width] duration-150"
                       style={{ width: `${faceTrackProgress}%` }}
                     />
                   </div>
@@ -386,7 +386,7 @@ export function LeftSidebar({
               <div className="flex flex-col gap-1.5 pt-0.5">
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-300">Suavizado de cámara</span>
-                  <span className="font-mono-tabular text-indigo-400">
+                  <span className="font-mono-tabular text-blue-400">
                     {settings.faceSmoothing}%
                   </span>
                 </div>
@@ -402,7 +402,7 @@ export function LeftSidebar({
               <div className="flex flex-col gap-1.5">
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-300">Altura del rostro</span>
-                  <span className="font-mono-tabular text-indigo-400">
+                  <span className="font-mono-tabular text-blue-400">
                     {settings.faceHeadroom}%
                   </span>
                 </div>
@@ -417,7 +417,7 @@ export function LeftSidebar({
             </section>
 
             <section className="p-4 flex flex-col gap-3.5">
-              <h2 className="text-xs font-semibold text-slate-300">Recorte y Velocidad</h2>
+              <h2 className="text-xs font-semibold text-slate-200">Recorte y Velocidad</h2>
               <div className="grid grid-cols-2 gap-2.5">
                 <label className="flex flex-col gap-1">
                   <span className="text-[11px] text-slate-400">Inicio (seg)</span>
@@ -428,7 +428,7 @@ export function LeftSidebar({
                     step={0.1}
                     value={Number(settings.trimStart.toFixed(1))}
                     onChange={(e) => onTrimStartChange(parseFloat(e.target.value) || 0)}
-                    className="w-full bg-[#0b0d11] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono-tabular text-slate-100 focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-[#0b0d12] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-xs font-mono-tabular text-slate-100 focus:outline-none focus:border-blue-500/70"
                   />
                 </label>
                 <label className="flex flex-col gap-1">
@@ -440,7 +440,7 @@ export function LeftSidebar({
                     step={0.1}
                     value={Number(settings.trimEnd.toFixed(1))}
                     onChange={(e) => onTrimEndChange(parseFloat(e.target.value) || duration)}
-                    className="w-full bg-[#0b0d11] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono-tabular text-slate-100 focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-[#0b0d12] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-xs font-mono-tabular text-slate-100 focus:outline-none focus:border-blue-500/70"
                   />
                 </label>
               </div>
@@ -448,7 +448,7 @@ export function LeftSidebar({
               <div className="flex flex-col gap-1.5">
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-300">Velocidad</span>
-                  <span className="font-mono-tabular text-indigo-400">
+                  <span className="font-mono-tabular text-blue-400">
                     {settings.speed.toFixed(2)}x
                   </span>
                 </div>
@@ -465,7 +465,7 @@ export function LeftSidebar({
 
             <section className="p-4 flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <h2 className="text-xs font-semibold text-slate-300">
+                <h2 className="text-xs font-semibold text-slate-200">
                   Corte Automático de Silencios
                 </h2>
                 <input
@@ -482,7 +482,7 @@ export function LeftSidebar({
                       onDetectSilences?.();
                     }
                   }}
-                  className="w-4 h-4 accent-indigo-500 cursor-pointer"
+                  className="w-4 h-4 accent-blue-500 cursor-pointer"
                   aria-label="Activar corte automático de silencios"
                 />
               </div>
@@ -492,12 +492,12 @@ export function LeftSidebar({
                   type="button"
                   disabled={!hasMediaOrDemo || analyzingAudio}
                   onClick={onDetectSilences}
-                  className="w-full inline-flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-medium text-slate-100 bg-[#191d26] border border-slate-800 hover:bg-[#222733] disabled:opacity-45 cursor-pointer"
+                  className="w-full inline-flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-medium text-slate-100 bg-[#181c25] hover:bg-[#202633] disabled:opacity-45 cursor-pointer transition-colors"
                 >
                   {analyzingAudio ? (
-                    <LoaderCircle className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                    <LoaderCircle className="w-3.5 h-3.5 animate-spin text-blue-400" />
                   ) : (
-                    <Scissors className="w-3.5 h-3.5 text-indigo-400" />
+                    <Scissors className="w-3.5 h-3.5 text-blue-400" />
                   )}
                   <span>
                     {analyzingAudio
@@ -512,7 +512,7 @@ export function LeftSidebar({
               <div className="flex flex-col gap-1.5">
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-300">Sensibilidad</span>
-                  <span className="font-mono-tabular text-indigo-400">
+                  <span className="font-mono-tabular text-blue-400">
                     {settings.silenceThresholdDb ?? -34} dB
                   </span>
                 </div>
@@ -531,7 +531,7 @@ export function LeftSidebar({
               <div className="flex flex-col gap-1.5">
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-300">Pausa mínima</span>
-                  <span className="font-mono-tabular text-indigo-400">
+                  <span className="font-mono-tabular text-blue-400">
                     {(settings.silenceMinSec ?? 0.45).toFixed(2)}s
                   </span>
                 </div>
@@ -562,21 +562,21 @@ export function LeftSidebar({
             </section>
 
             <section className="p-4 flex flex-col gap-3">
-              <h2 className="text-xs font-semibold text-slate-300">Barra de Retención</h2>
+              <h2 className="text-xs font-semibold text-slate-200">Barra de Retención</h2>
               <label className="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
                 <span>Mostrar barra de progreso</span>
                 <input
                   type="checkbox"
                   checked={settings.progressBar}
                   onChange={(e) => onUpdateSetting('progressBar', e.target.checked)}
-                  className="w-4 h-4 accent-indigo-500 cursor-pointer"
+                  className="w-4 h-4 accent-blue-500 cursor-pointer"
                 />
               </label>
               <div className="grid grid-cols-2 gap-2">
                 <select
                   value={settings.progressPos}
                   onChange={(e) => onUpdateSetting('progressPos', e.target.value as ProgressPos)}
-                  className="bg-[#0b0d11] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                  className="bg-[#0b0d12] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
                 >
                   <option value="top">Arriba</option>
                   <option value="bottom">Abajo</option>
@@ -585,7 +585,7 @@ export function LeftSidebar({
                   type="color"
                   value={settings.progressColor}
                   onChange={(e) => onUpdateSetting('progressColor', e.target.value)}
-                  className="w-full h-8 bg-[#0b0d11] border border-slate-800 rounded-lg p-0.5 cursor-pointer"
+                  className="w-full h-8 bg-[#0b0d12] border border-white/[0.06] rounded-lg p-0.5 cursor-pointer"
                 />
               </div>
             </section>
@@ -595,7 +595,7 @@ export function LeftSidebar({
         {activeTab === 'subs' && (
           <>
             <section className="p-4 flex flex-col gap-3">
-              <h2 className="text-xs font-semibold text-slate-300">Plantillas Virales</h2>
+              <h2 className="text-xs font-semibold text-slate-200">Plantillas Virales</h2>
               <div className="grid grid-cols-3 gap-1.5">
                 {(
                   [
@@ -611,7 +611,7 @@ export function LeftSidebar({
                     key={preset.id}
                     type="button"
                     onClick={() => applySubPreset(preset.id)}
-                    className="py-1.5 px-2 rounded-lg text-xs font-medium bg-[#191d26] border border-slate-800 text-slate-200 hover:bg-[#222733] hover:border-slate-700 cursor-pointer whitespace-nowrap transition-colors"
+                    className="py-1.5 px-2 rounded-lg text-xs font-medium bg-[#181c25] text-slate-200 hover:bg-[#222836] hover:text-white cursor-pointer whitespace-nowrap transition-colors"
                   >
                     {preset.label}
                   </button>
@@ -621,15 +621,15 @@ export function LeftSidebar({
 
             <section className="p-4 flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <h2 className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-300">
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                <h2 className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-200">
+                  <Sparkles className="w-3.5 h-3.5 text-blue-400" />
                   <span>Gancho Superior y Transición</span>
                 </h2>
                 <input
                   type="checkbox"
                   checked={Boolean(settings.hookEnabled)}
                   onChange={(e) => onUpdateSetting('hookEnabled', e.target.checked)}
-                  className="w-4 h-4 accent-indigo-500 cursor-pointer"
+                  className="w-4 h-4 accent-blue-500 cursor-pointer"
                   aria-label="Activar título gancho superior"
                 />
               </div>
@@ -641,7 +641,7 @@ export function LeftSidebar({
                   onChange={(e) =>
                     onUpdateSetting('transitionIn', e.target.value as TransitionInType)
                   }
-                  className="bg-[#0b0d11] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                  className="bg-[#0b0d12] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
                 >
                   <option value="none">Sin transición</option>
                   <option value="zoom-punch">Zoom Punch (TikTok)</option>
@@ -651,7 +651,7 @@ export function LeftSidebar({
               </label>
 
               {settings.hookEnabled && (
-                <div className="flex flex-col gap-2.5 pt-1 border-t border-slate-800/80">
+                <div className="flex flex-col gap-2.5 pt-2 border-t border-white/[0.06]">
                   <label className="flex flex-col gap-1">
                     <span className="text-[11px] text-slate-400">Texto del gancho superior</span>
                     <input
@@ -659,11 +659,11 @@ export function LeftSidebar({
                       value={settings.hookText || ''}
                       onChange={(e) => onUpdateSetting('hookText', e.target.value)}
                       placeholder="Ej: El secreto que nadie te cuenta"
-                      className="w-full bg-[#0b0d11] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-[#0b0d12] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
                     />
                   </label>
 
-                  <div className="grid grid-cols-2 gap-1.5 bg-[#0b0d11] p-1 rounded-lg border border-slate-800/80">
+                  <div className="grid grid-cols-2 gap-1 bg-[#0b0d12] p-1 rounded-xl">
                     {(
                       [
                         { id: 'white-box', label: 'Caja Blanca', bg: '#ffffff', txt: '#0f172a' },
@@ -682,10 +682,10 @@ export function LeftSidebar({
                             hookTextColor: st.txt,
                           })
                         }
-                        className={`py-1.5 px-2 rounded-md text-[11px] font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                        className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition-colors whitespace-nowrap cursor-pointer ${
                           (settings.hookStyle || 'white-box') === st.id
-                            ? 'bg-indigo-600 text-white'
-                            : 'text-slate-400 hover:text-slate-200'
+                            ? 'bg-blue-600 text-white'
+                            : 'text-slate-400 hover:text-slate-100'
                         }`}
                       >
                         {st.label}
@@ -701,7 +701,7 @@ export function LeftSidebar({
                         onChange={(e) =>
                           onUpdateSetting('hookDurationSec', Number(e.target.value))
                         }
-                        className="bg-[#0b0d11] border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                        className="bg-[#0b0d12] border border-white/[0.06] rounded-lg px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
                       >
                         <option value={3.5}>Primeros 3.5s</option>
                         <option value={5}>Primeros 5s</option>
@@ -711,7 +711,7 @@ export function LeftSidebar({
                     <div className="flex flex-col gap-1 justify-center">
                       <div className="flex justify-between text-[11px]">
                         <span className="text-slate-400">Altura</span>
-                        <span className="font-mono-tabular text-indigo-400">
+                        <span className="font-mono-tabular text-blue-400">
                           {settings.hookY ?? 14}%
                         </span>
                       </div>
@@ -729,13 +729,13 @@ export function LeftSidebar({
             </section>
 
             <section className="p-4 flex flex-col gap-3">
-              <h2 className="text-xs font-semibold text-slate-300">Animación y Fondo</h2>
+              <h2 className="text-xs font-semibold text-slate-200">Animación y Fondo</h2>
               <div className="flex flex-col gap-1.5">
                 <span className="text-[11px] text-slate-400">Modo de palabra</span>
                 <select
                   value={settings.subMode}
                   onChange={(e) => onUpdateSetting('subMode', e.target.value as SubMode)}
-                  className="bg-[#0b0d11] border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                  className="bg-[#0b0d12] border border-white/[0.06] rounded-lg px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
                 >
                   <option value="karaoke">Karaoke (Resalte suave)</option>
                   <option value="bounce">Rebote Elástico (Salto activo)</option>
@@ -746,7 +746,7 @@ export function LeftSidebar({
 
               <div className="flex flex-col gap-1.5">
                 <span className="text-[11px] text-slate-400">Estilo de fondo</span>
-                <div className="grid grid-cols-2 gap-1.5 bg-[#0b0d11] p-1 rounded-lg border border-slate-800/80">
+                <div className="grid grid-cols-2 gap-1 bg-[#0b0d12] p-1 rounded-xl">
                   {(
                     [
                       { id: 'none', label: 'Sin fondo' },
@@ -759,10 +759,10 @@ export function LeftSidebar({
                       key={bg.id}
                       type="button"
                       onClick={() => onUpdateSetting('subBgMode', bg.id)}
-                      className={`py-1.5 px-2 rounded-md text-[11px] font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                      className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition-colors whitespace-nowrap cursor-pointer ${
                         settings.subBgMode === bg.id
-                          ? 'bg-indigo-600 text-white'
-                          : 'text-slate-400 hover:text-slate-200'
+                          ? 'bg-blue-600 text-white'
+                          : 'text-slate-400 hover:text-slate-100'
                       }`}
                     >
                       {bg.label}
@@ -777,7 +777,7 @@ export function LeftSidebar({
                   type="checkbox"
                   checked={settings.subPop}
                   onChange={(e) => onUpdateSetting('subPop', e.target.checked)}
-                  className="w-4 h-4 accent-indigo-500 cursor-pointer"
+                  className="w-4 h-4 accent-blue-500 cursor-pointer"
                 />
               </label>
 
@@ -787,17 +787,17 @@ export function LeftSidebar({
                   type="checkbox"
                   checked={settings.subUpper}
                   onChange={(e) => onUpdateSetting('subUpper', e.target.checked)}
-                  className="w-4 h-4 accent-indigo-500 cursor-pointer"
+                  className="w-4 h-4 accent-blue-500 cursor-pointer"
                 />
               </label>
             </section>
 
             <section className="p-4 flex flex-col gap-3.5">
-              <h2 className="text-xs font-semibold text-slate-300">Tipografía y Posición</h2>
+              <h2 className="text-xs font-semibold text-slate-200">Tipografía y Posición</h2>
               <select
                 value={settings.subFont}
                 onChange={(e) => onUpdateSetting('subFont', e.target.value)}
-                className="bg-[#0b0d11] border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                className="bg-[#0b0d12] border border-white/[0.06] rounded-lg px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
               >
                 <option value="'Montserrat', Impact, sans-serif">Montserrat Black</option>
                 <option value="'Anton', Impact, sans-serif">Anton Impact</option>
@@ -809,7 +809,7 @@ export function LeftSidebar({
               <div className="flex flex-col gap-1.5">
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-300">Tamaño</span>
-                  <span className="font-mono-tabular text-indigo-400">{settings.subSize}px</span>
+                  <span className="font-mono-tabular text-blue-400">{settings.subSize}px</span>
                 </div>
                 <input
                   type="range"
@@ -833,12 +833,12 @@ export function LeftSidebar({
                         key={pos.label}
                         type="button"
                         onClick={() => onUpdateSetting('subY', pos.val)}
-                        className="px-1.5 py-0.5 rounded text-[10px] bg-[#191d26] border border-slate-800 text-slate-300 hover:text-white cursor-pointer"
+                        className="px-1.5 py-0.5 rounded text-[10px] bg-[#181c25] text-slate-300 hover:bg-[#222836] hover:text-white cursor-pointer"
                       >
                         {pos.label}
                       </button>
                     ))}
-                    <span className="font-mono-tabular text-indigo-400 ml-1">
+                    <span className="font-mono-tabular text-blue-400 ml-1">
                       {settings.subY}%
                     </span>
                   </div>
@@ -855,7 +855,7 @@ export function LeftSidebar({
               <div className="flex flex-col gap-1.5">
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-300">Ancho Máximo</span>
-                  <span className="font-mono-tabular text-indigo-400">
+                  <span className="font-mono-tabular text-blue-400">
                     {settings.subMaxWidth}px
                   </span>
                 </div>
@@ -873,7 +873,7 @@ export function LeftSidebar({
                 <div className="flex flex-col gap-1.5">
                   <div className="flex justify-between text-[11px]">
                     <span className="text-slate-300">Contorno</span>
-                    <span className="font-mono-tabular text-indigo-400">{settings.subStroke}</span>
+                    <span className="font-mono-tabular text-blue-400">{settings.subStroke}</span>
                   </div>
                   <input
                     type="range"
@@ -886,7 +886,7 @@ export function LeftSidebar({
                 <div className="flex flex-col gap-1.5">
                   <div className="flex justify-between text-[11px]">
                     <span className="text-slate-300">Sombra</span>
-                    <span className="font-mono-tabular text-indigo-400">{settings.subShadow}</span>
+                    <span className="font-mono-tabular text-blue-400">{settings.subShadow}</span>
                   </div>
                   <input
                     type="range"
@@ -905,7 +905,7 @@ export function LeftSidebar({
                     type="color"
                     value={settings.subColor}
                     onChange={(e) => onUpdateSetting('subColor', e.target.value)}
-                    className="w-full h-8 bg-[#0b0d11] border border-slate-800 rounded-lg p-0.5 cursor-pointer"
+                    className="w-full h-8 bg-[#0b0d12] border border-white/[0.06] rounded-lg p-0.5 cursor-pointer"
                   />
                 </label>
                 <label className="flex flex-col gap-1">
@@ -914,7 +914,7 @@ export function LeftSidebar({
                     type="color"
                     value={settings.subHighlight}
                     onChange={(e) => onUpdateSetting('subHighlight', e.target.value)}
-                    className="w-full h-8 bg-[#0b0d11] border border-slate-800 rounded-lg p-0.5 cursor-pointer"
+                    className="w-full h-8 bg-[#0b0d12] border border-white/[0.06] rounded-lg p-0.5 cursor-pointer"
                   />
                 </label>
                 <label className="flex flex-col gap-1">
@@ -923,7 +923,7 @@ export function LeftSidebar({
                     type="color"
                     value={settings.subStrokeColor}
                     onChange={(e) => onUpdateSetting('subStrokeColor', e.target.value)}
-                    className="w-full h-8 bg-[#0b0d11] border border-slate-800 rounded-lg p-0.5 cursor-pointer"
+                    className="w-full h-8 bg-[#0b0d12] border border-white/[0.06] rounded-lg p-0.5 cursor-pointer"
                   />
                 </label>
                 <label className="flex flex-col gap-1">
@@ -932,7 +932,7 @@ export function LeftSidebar({
                     type="color"
                     value={settings.subBgColor}
                     onChange={(e) => onUpdateSetting('subBgColor', e.target.value)}
-                    className="w-full h-8 bg-[#0b0d11] border border-slate-800 rounded-lg p-0.5 cursor-pointer"
+                    className="w-full h-8 bg-[#0b0d12] border border-white/[0.06] rounded-lg p-0.5 cursor-pointer"
                   />
                 </label>
               </div>
@@ -944,18 +944,18 @@ export function LeftSidebar({
           <>
             <section className="p-4 flex flex-col gap-3.5">
               <div className="flex items-center justify-between">
-                <h2 className="text-xs font-semibold text-slate-300">Corrección de Color</h2>
+                <h2 className="text-xs font-semibold text-slate-200">Corrección de Color</h2>
                 <button
                   type="button"
                   onClick={onResetColor}
-                  className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-slate-200 cursor-pointer"
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-slate-100 cursor-pointer"
                 >
                   <RotateCcw className="w-3 h-3" />
                   <span>Reset</span>
                 </button>
               </div>
 
-              <div className="grid grid-cols-4 gap-1">
+              <div className="grid grid-cols-4 gap-1.5">
                 {(
                   [
                     { id: 'original', label: 'Base' },
@@ -968,7 +968,7 @@ export function LeftSidebar({
                     key={preset.id}
                     type="button"
                     onClick={() => applyColorPreset(preset.id)}
-                    className="py-1.5 px-1 rounded-md text-[11px] font-medium bg-[#191d26] border border-slate-800 text-slate-200 hover:bg-[#222733] cursor-pointer"
+                    className="py-1.5 px-1 rounded-lg text-[11px] font-medium bg-[#181c25] text-slate-200 hover:bg-[#222836] cursor-pointer transition-colors"
                   >
                     {preset.label}
                   </button>
@@ -978,7 +978,7 @@ export function LeftSidebar({
               <div className="flex flex-col gap-1.5">
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-300">Brillo</span>
-                  <span className="font-mono-tabular text-indigo-400">{settings.bright}%</span>
+                  <span className="font-mono-tabular text-blue-400">{settings.bright}%</span>
                 </div>
                 <input
                   type="range"
@@ -992,7 +992,7 @@ export function LeftSidebar({
               <div className="flex flex-col gap-1.5">
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-300">Contraste</span>
-                  <span className="font-mono-tabular text-indigo-400">{settings.contrast}%</span>
+                  <span className="font-mono-tabular text-blue-400">{settings.contrast}%</span>
                 </div>
                 <input
                   type="range"
@@ -1006,7 +1006,7 @@ export function LeftSidebar({
               <div className="flex flex-col gap-1.5">
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-300">Saturación</span>
-                  <span className="font-mono-tabular text-indigo-400">{settings.sat}%</span>
+                  <span className="font-mono-tabular text-blue-400">{settings.sat}%</span>
                 </div>
                 <input
                   type="range"
@@ -1019,11 +1019,11 @@ export function LeftSidebar({
             </section>
 
             <section className="p-4 flex flex-col gap-3.5">
-              <h2 className="text-xs font-semibold text-slate-300">Mezcla de Audio</h2>
+              <h2 className="text-xs font-semibold text-slate-200">Mezcla de Audio</h2>
               <div className="flex flex-col gap-1.5">
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-300">Audio del Video</span>
-                  <span className="font-mono-tabular text-indigo-400">{settings.volVideo}%</span>
+                  <span className="font-mono-tabular text-blue-400">{settings.volVideo}%</span>
                 </div>
                 <input
                   type="range"
@@ -1037,7 +1037,7 @@ export function LeftSidebar({
               <div className="flex flex-col gap-1.5">
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-300">Música de Fondo</span>
-                  <span className="font-mono-tabular text-indigo-400">{settings.volBgm}%</span>
+                  <span className="font-mono-tabular text-blue-400">{settings.volBgm}%</span>
                 </div>
                 <input
                   type="range"
@@ -1056,7 +1056,7 @@ export function LeftSidebar({
                   <button
                     type="button"
                     onClick={onRemoveBgm}
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-rose-300 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 shrink-0 cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium text-rose-300 bg-rose-500/12 hover:bg-rose-500/22 shrink-0 cursor-pointer"
                   >
                     <Trash2 className="w-3 h-3" />
                     <span>Quitar</span>
@@ -1067,12 +1067,12 @@ export function LeftSidebar({
 
             <section className="p-4 flex flex-col gap-3.5">
               <div className="flex items-center justify-between">
-                <h2 className="text-xs font-semibold text-slate-300">Marca de Agua / Brand Kit</h2>
+                <h2 className="text-xs font-semibold text-slate-200">Marca de Agua / Brand Kit</h2>
                 <input
                   type="checkbox"
                   checked={Boolean(settings.watermarkEnabled)}
                   onChange={(e) => onUpdateSetting('watermarkEnabled', e.target.checked)}
-                  className="w-4 h-4 accent-indigo-500 cursor-pointer"
+                  className="w-4 h-4 accent-blue-500 cursor-pointer"
                   aria-label="Activar marca de agua"
                 />
               </div>
@@ -1084,7 +1084,7 @@ export function LeftSidebar({
                   value={settings.watermarkText ?? '@tu_canal'}
                   onChange={(e) => onUpdateSetting('watermarkText', e.target.value)}
                   placeholder="@tu_marca"
-                  className="w-full bg-[#0b0d11] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-[#0b0d12] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
                 />
               </label>
 
@@ -1096,7 +1096,7 @@ export function LeftSidebar({
                     onChange={(e) =>
                       onUpdateSetting('watermarkPos', e.target.value as WatermarkPos)
                     }
-                    className="bg-[#0b0d11] border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                    className="bg-[#0b0d12] border border-white/[0.06] rounded-lg px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
                   >
                     <option value="top-left">Superior Izquierda</option>
                     <option value="top-right">Superior Derecha</option>
@@ -1108,7 +1108,7 @@ export function LeftSidebar({
                 <div className="flex flex-col gap-1.5 justify-center">
                   <div className="flex justify-between text-[11px]">
                     <span className="text-slate-400">Opacidad</span>
-                    <span className="font-mono-tabular text-indigo-400">
+                    <span className="font-mono-tabular text-blue-400">
                       {settings.watermarkOpacity ?? 75}%
                     </span>
                   </div>

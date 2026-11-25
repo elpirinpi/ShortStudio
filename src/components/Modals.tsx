@@ -36,10 +36,10 @@ export function ExportOptionsModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-md bg-[#12151c] border border-slate-800 rounded-xl p-5 flex flex-col gap-4 shadow-2xl">
+      <div className="w-full max-w-md bg-[#12151c] border border-white/[0.08] rounded-2xl p-6 flex flex-col gap-4 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
-            <h3 className="text-base font-semibold text-slate-100">Exportar Short Profesional</h3>
+            <h3 className="text-base font-semibold text-white">Exportar Short Profesional</h3>
             <p className="text-xs font-mono-tabular text-slate-400">
               {dimensionsLabel} · {durationSec.toFixed(1)}s · 30fps
               {hasWatermark ? ' · Marca de agua activa' : ''}
@@ -48,25 +48,25 @@ export function ExportOptionsModal({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-[#191d26] cursor-pointer"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           <button
             type="button"
             onClick={() => onSelectFormat('mp4-h264')}
-            className={`w-full text-left p-3.5 rounded-lg border transition-colors cursor-pointer ${
+            className={`w-full text-left p-3.5 rounded-xl border transition-colors cursor-pointer ${
               selectedFormat === 'mp4-h264'
-                ? 'bg-indigo-600/15 border-indigo-500 text-slate-100'
-                : 'bg-[#0b0d11] border-slate-800 text-slate-300 hover:border-slate-700'
+                ? 'bg-blue-600/15 border-blue-500/70 text-white'
+                : 'bg-[#0b0d12] border-white/[0.06] text-slate-300 hover:border-white/[0.14]'
             }`}
           >
             <div className="flex items-center justify-between text-xs font-semibold">
               <span>MP4 Estudio 1:1 (WebCodecs Exacto)</span>
-              <span className="text-[11px] font-medium text-indigo-400">Máxima fidelidad</span>
+              <span className="text-[11px] font-medium text-blue-400">Máxima fidelidad</span>
             </div>
             <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
               Renderiza idéntico a la vista previa (fuentes personalizadas, píldoras karaoke,
@@ -77,10 +77,10 @@ export function ExportOptionsModal({
           <button
             type="button"
             onClick={() => onSelectFormat('ffmpeg-fast')}
-            className={`w-full text-left p-3.5 rounded-lg border transition-colors cursor-pointer ${
+            className={`w-full text-left p-3.5 rounded-xl border transition-colors cursor-pointer ${
               selectedFormat === 'ffmpeg-fast'
-                ? 'bg-indigo-600/15 border-indigo-500 text-slate-100'
-                : 'bg-[#0b0d11] border-slate-800 text-slate-300 hover:border-slate-700'
+                ? 'bg-blue-600/15 border-blue-500/70 text-white'
+                : 'bg-[#0b0d12] border-white/[0.06] text-slate-300 hover:border-white/[0.14]'
             }`}
           >
             <div className="flex items-center justify-between text-xs font-semibold">
@@ -96,10 +96,10 @@ export function ExportOptionsModal({
           <button
             type="button"
             onClick={() => onSelectFormat('webm-fast')}
-            className={`w-full text-left p-3.5 rounded-lg border transition-colors cursor-pointer ${
+            className={`w-full text-left p-3.5 rounded-xl border transition-colors cursor-pointer ${
               selectedFormat === 'webm-fast'
-                ? 'bg-indigo-600/15 border-indigo-500 text-slate-100'
-                : 'bg-[#0b0d11] border-slate-800 text-slate-300 hover:border-slate-700'
+                ? 'bg-blue-600/15 border-blue-500/70 text-white'
+                : 'bg-[#0b0d12] border-white/[0.06] text-slate-300 hover:border-white/[0.14]'
             }`}
           >
             <div className="flex items-center justify-between text-xs font-semibold">
@@ -112,18 +112,18 @@ export function ExportOptionsModal({
           </button>
         </div>
 
-        <div className="flex justify-end gap-2 pt-1">
+        <div className="flex justify-end gap-2.5 pt-1">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-lg text-xs font-medium text-slate-300 bg-[#191d26] border border-slate-800 hover:bg-[#222733] cursor-pointer"
+            className="px-4 py-2 rounded-xl text-xs font-medium text-slate-300 bg-[#181c25] hover:bg-[#222836] cursor-pointer transition-colors"
           >
             Cancelar
           </button>
           <button
             type="button"
             onClick={() => onStartExport(selectedFormat)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 cursor-pointer"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 cursor-pointer transition-colors"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Iniciar Renderizado</span>
@@ -153,17 +153,17 @@ export function ExportModal({
 
   return (
     <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="w-full max-w-md bg-[#12151c] border border-slate-800 rounded-xl p-6 flex flex-col gap-4 shadow-2xl">
+      <div className="w-full max-w-md bg-[#12151c] border border-white/[0.08] rounded-2xl p-6 flex flex-col gap-4 shadow-2xl">
         <div className="space-y-1">
-          <h3 className="text-base font-semibold text-slate-100">
+          <h3 className="text-base font-semibold text-white">
             Renderizando Short ({dimensionsLabel})
           </h3>
           <p className="text-xs text-slate-400 leading-relaxed font-mono-tabular">{statusText}</p>
         </div>
 
-        <div className="h-2.5 w-full bg-[#0b0d11] border border-slate-800 rounded-full overflow-hidden">
+        <div className="h-2 w-full bg-[#0b0d12] rounded-full overflow-hidden">
           <div
-            className="h-full bg-indigo-500 transition-[width] duration-100 ease-linear"
+            className="h-full bg-blue-500 transition-[width] duration-100 ease-linear"
             style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
           />
         </div>
@@ -172,7 +172,7 @@ export function ExportModal({
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 rounded-lg text-xs font-medium text-rose-300 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 cursor-pointer"
+            className="px-4 py-2 rounded-xl text-xs font-medium text-rose-300 bg-rose-500/10 border border-rose-500/25 hover:bg-rose-500/20 cursor-pointer"
           >
             Cancelar
           </button>
@@ -271,9 +271,9 @@ export function ScriptModal({ open, onClose, onGenerate }: ScriptModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="w-full max-w-lg bg-[#12151c] border border-slate-800 rounded-xl p-6 flex flex-col gap-4 shadow-2xl">
+      <div className="w-full max-w-lg bg-[#12151c] border border-white/[0.08] rounded-2xl p-6 flex flex-col gap-4 shadow-2xl">
         <div className="space-y-1">
-          <h3 className="text-base font-semibold text-slate-100">
+          <h3 className="text-base font-semibold text-white">
             Generar subtítulos desde guion o dictado
           </h3>
           <p className="text-xs text-slate-400 leading-relaxed">
@@ -283,12 +283,12 @@ export function ScriptModal({ open, onClose, onGenerate }: ScriptModalProps) {
         </div>
 
         {SpeechCtor && (
-          <div className="flex items-center justify-between gap-2 bg-[#0b0d11] border border-slate-800 rounded-lg p-2.5">
+          <div className="flex items-center justify-between gap-2 bg-[#0b0d12] rounded-xl p-2.5">
             <select
               value={dictationLang}
               disabled={dictating}
               onChange={(e) => setDictationLang(e.target.value)}
-              className="bg-[#12151c] border border-slate-800 rounded-md px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+              className="bg-[#141821] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500/70"
             >
               <option value="es-ES">Dictar en Español</option>
               <option value="en-US">Dictar en Inglés</option>
@@ -297,13 +297,13 @@ export function ScriptModal({ open, onClose, onGenerate }: ScriptModalProps) {
             <button
               type="button"
               onClick={toggleDictation}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
                 dictating
                   ? 'bg-rose-600 hover:bg-rose-500 text-white'
-                  : 'bg-[#191d26] border border-slate-800 text-slate-200 hover:bg-[#222733]'
+                  : 'bg-[#181c25] text-slate-200 hover:bg-[#222836]'
               }`}
             >
-              {dictating ? <Square className="w-3 h-3 fill-current" /> : <Mic className="w-3.5 h-3.5 text-indigo-400" />}
+              {dictating ? <Square className="w-3 h-3 fill-current" /> : <Mic className="w-3.5 h-3.5 text-blue-400" />}
               <span>{dictating ? 'Detener Dictado' : 'Dictar con Micrófono'}</span>
             </button>
           </div>
@@ -314,7 +314,7 @@ export function ScriptModal({ open, onClose, onGenerate }: ScriptModalProps) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Ej: ¿Sabías que el 80% de las personas desliza en los primeros 2 segundos? Por eso necesitas subtítulos dinámicos que retengan la atención."
-          className="w-full bg-[#0b0d11] border border-slate-800 rounded-lg p-3 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 resize-y"
+          className="w-full bg-[#0b0d12] border border-white/[0.06] rounded-xl p-3.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70 resize-y"
         />
 
         <label className="flex flex-col gap-1.5">
@@ -322,7 +322,7 @@ export function ScriptModal({ open, onClose, onGenerate }: ScriptModalProps) {
           <select
             value={wordsPerBlock}
             onChange={(e) => setWordsPerBlock(Number(e.target.value))}
-            className="w-full bg-[#0b0d11] border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+            className="w-full bg-[#0b0d12] border border-white/[0.06] rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
           >
             <option value={2}>2 palabras (Ritmo rápido / Hormozi)</option>
             <option value={3}>3 palabras (Equilibrado)</option>
@@ -331,7 +331,7 @@ export function ScriptModal({ open, onClose, onGenerate }: ScriptModalProps) {
           </select>
         </label>
 
-        <div className="flex justify-end gap-2 pt-1">
+        <div className="flex justify-end gap-2.5 pt-1">
           <button
             type="button"
             onClick={() => {
@@ -341,7 +341,7 @@ export function ScriptModal({ open, onClose, onGenerate }: ScriptModalProps) {
               }
               onClose();
             }}
-            className="px-4 py-2 rounded-lg text-xs font-medium text-slate-300 bg-[#191d26] border border-slate-800 hover:bg-[#222733] cursor-pointer"
+            className="px-4 py-2 rounded-xl text-xs font-medium text-slate-300 bg-[#181c25] hover:bg-[#222836] cursor-pointer"
           >
             Cancelar
           </button>
@@ -356,7 +356,7 @@ export function ScriptModal({ open, onClose, onGenerate }: ScriptModalProps) {
               onGenerate(text, wordsPerBlock);
               setText('');
             }}
-            className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 cursor-pointer"
+            className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 cursor-pointer"
           >
             Generar Subtítulos
           </button>
@@ -435,11 +435,11 @@ export function BatchExportModal({
         if (e.target === e.currentTarget && !exporting) onClose();
       }}
     >
-      <div className="w-full max-w-xl bg-[#12151c] border border-slate-800 rounded-xl p-6 flex flex-col gap-4 shadow-2xl max-h-[90vh]">
+      <div className="w-full max-w-xl bg-[#12151c] border border-white/[0.08] rounded-2xl p-6 flex flex-col gap-4 shadow-2xl max-h-[90vh]">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1 min-w-0">
-            <h3 className="inline-flex items-center gap-2 text-base font-semibold text-slate-100">
-              <Layers className="w-4 h-4 text-indigo-400" />
+            <h3 className="inline-flex items-center gap-2 text-base font-semibold text-white">
+              <Layers className="w-4 h-4 text-blue-400" />
               <span>Exportación por Lotes (.MP4)</span>
             </h3>
             <p className="text-xs text-slate-400 truncate">
@@ -450,7 +450,7 @@ export function BatchExportModal({
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-[#191d26] cursor-pointer"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -459,7 +459,7 @@ export function BatchExportModal({
 
         {summary ? (
           <div className="space-y-4">
-            <div className="bg-[#0b0d11] border border-slate-800 rounded-lg p-4 space-y-2">
+            <div className="bg-[#0b0d12] rounded-xl p-4 space-y-2">
               <div className="flex items-center gap-2 text-sm font-semibold text-emerald-400">
                 <FolderCheck className="w-4 h-4" />
                 <span>
@@ -471,7 +471,7 @@ export function BatchExportModal({
               {summary.savedPaths.length > 0 && (
                 <p className="text-xs text-slate-300 leading-relaxed break-all">
                   Guardados en carpeta local:{' '}
-                  <span className="font-mono-tabular text-indigo-300">
+                  <span className="font-mono-tabular text-blue-400">
                     {summary.savedPaths[0].replace(/[\\/][^\\/]+$/, '')}
                   </span>
                 </p>
@@ -486,7 +486,7 @@ export function BatchExportModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 cursor-pointer"
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 cursor-pointer"
               >
                 Listo
               </button>
@@ -494,21 +494,21 @@ export function BatchExportModal({
           </div>
         ) : exporting && progress ? (
           <div className="space-y-4">
-            <div className="bg-[#0b0d11] border border-slate-800 rounded-lg p-4 space-y-3">
+            <div className="bg-[#0b0d12] rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between text-xs">
-                <span className="inline-flex items-center gap-2 font-semibold text-slate-100">
-                  <LoaderCircle className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                <span className="inline-flex items-center gap-2 font-semibold text-white">
+                  <LoaderCircle className="w-3.5 h-3.5 animate-spin text-blue-400" />
                   <span>
                     Clip {progress.currentIndex + 1} de {progress.total}
                   </span>
                 </span>
-                <span className="font-mono-tabular text-indigo-400 font-semibold">
+                <span className="font-mono-tabular text-blue-400 font-semibold">
                   {progress.overallPct}% total
                 </span>
               </div>
-              <div className="h-2.5 w-full bg-[#12151c] border border-slate-800 rounded-full overflow-hidden">
+              <div className="h-2 w-full bg-[#161a24] rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-indigo-500 transition-[width] duration-150 ease-linear"
+                  className="h-full bg-blue-500 transition-[width] duration-150 ease-linear"
                   style={{ width: `${Math.min(100, Math.max(0, progress.overallPct))}%` }}
                 />
               </div>
@@ -526,7 +526,7 @@ export function BatchExportModal({
               <button
                 type="button"
                 onClick={onCancelBatch}
-                className="px-4 py-2 rounded-lg text-xs font-medium text-rose-300 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 cursor-pointer"
+                className="px-4 py-2 rounded-xl text-xs font-medium text-rose-300 bg-rose-500/10 border border-rose-500/25 hover:bg-rose-500/20 cursor-pointer"
               >
                 Cancelar Lote
               </button>
@@ -534,13 +534,13 @@ export function BatchExportModal({
           </div>
         ) : (
           <>
-            <div className="flex items-center justify-between text-xs border-b border-slate-800/80 pb-2">
+            <div className="flex items-center justify-between text-xs border-b border-white/[0.06] pb-2.5">
               <label className="inline-flex items-center gap-2 text-slate-200 font-medium cursor-pointer">
                 <input
                   type="checkbox"
                   checked={allSelected}
                   onChange={toggleAll}
-                  className="w-4 h-4 accent-indigo-500 cursor-pointer"
+                  className="w-4 h-4 accent-blue-500 cursor-pointer"
                 />
                 <span>Seleccionar todos</span>
               </label>
@@ -556,18 +556,18 @@ export function BatchExportModal({
                 return (
                   <label
                     key={clip.id}
-                    className={`flex items-center justify-between gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                    className={`flex items-center justify-between gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
                       checked
-                        ? 'bg-indigo-600/10 border-indigo-500/50 text-slate-100'
-                        : 'bg-[#0b0d11] border-slate-800/80 text-slate-400 hover:border-slate-700'
+                        ? 'bg-blue-600/12 border-blue-500/45 text-white'
+                        : 'bg-[#0b0d12]/80 border-white/[0.05] text-slate-400 hover:border-white/[0.12]'
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <span
                         className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
                           checked
-                            ? 'bg-indigo-600 border-indigo-500 text-white'
-                            : 'border-slate-700 bg-[#12151c]'
+                            ? 'bg-blue-600 border-blue-500 text-white'
+                            : 'border-white/[0.15] bg-[#141821]'
                         }`}
                       >
                         {checked && <Check className="w-3 h-3" />}
@@ -596,15 +596,15 @@ export function BatchExportModal({
               })}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
               <button
                 type="button"
                 disabled={isDemo}
                 onClick={() => setEngine('ffmpeg-fast')}
-                className={`p-3 rounded-lg border text-left transition-colors cursor-pointer disabled:opacity-40 ${
+                className={`p-3.5 rounded-xl border text-left transition-colors cursor-pointer disabled:opacity-40 ${
                   engine === 'ffmpeg-fast'
-                    ? 'bg-indigo-600/15 border-indigo-500 text-slate-100'
-                    : 'bg-[#0b0d11] border-slate-800 text-slate-300 hover:border-slate-700'
+                    ? 'bg-blue-600/15 border-blue-500/70 text-white'
+                    : 'bg-[#0b0d12] border-white/[0.06] text-slate-300 hover:border-white/[0.14]'
                 }`}
               >
                 <div className="flex items-center justify-between text-xs font-semibold">
@@ -621,15 +621,15 @@ export function BatchExportModal({
               <button
                 type="button"
                 onClick={() => setEngine('mp4-h264')}
-                className={`p-3 rounded-lg border text-left transition-colors cursor-pointer ${
+                className={`p-3.5 rounded-xl border text-left transition-colors cursor-pointer ${
                   engine === 'mp4-h264'
-                    ? 'bg-indigo-600/15 border-indigo-500 text-slate-100'
-                    : 'bg-[#0b0d11] border-slate-800 text-slate-300 hover:border-slate-700'
+                    ? 'bg-blue-600/15 border-blue-500/70 text-white'
+                    : 'bg-[#0b0d12] border-white/[0.06] text-slate-300 hover:border-white/[0.14]'
                 }`}
               >
                 <div className="flex items-center justify-between text-xs font-semibold">
                   <span>Estudio 1:1</span>
-                  <span className="text-[10px] text-indigo-400">WebCodecs</span>
+                  <span className="text-[10px] text-blue-400">WebCodecs</span>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-1">
                   Máxima fidelidad en fuentes, píldoras karaoke y seguimiento facial.
@@ -637,11 +637,11 @@ export function BatchExportModal({
               </button>
             </div>
 
-            <div className="flex justify-end gap-2 pt-1">
+            <div className="flex justify-end gap-2.5 pt-1">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 rounded-lg text-xs font-medium text-slate-300 bg-[#191d26] border border-slate-800 hover:bg-[#222733] cursor-pointer"
+                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-300 bg-[#181c25] hover:bg-[#222836] cursor-pointer"
               >
                 Cancelar
               </button>
@@ -649,7 +649,7 @@ export function BatchExportModal({
                 type="button"
                 disabled={!canStart}
                 onClick={() => onStartBatch(selectedIds, engine)}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-45 cursor-pointer"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-45 cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Exportar {selectedIds.length} Clips (.MP4)</span>
@@ -661,4 +661,3 @@ export function BatchExportModal({
     </div>
   );
 }
-

@@ -1677,7 +1677,7 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
         />
 
         {/* Contextual Editor Sub-bar */}
-        <div className="h-10 shrink-0 bg-[#12151c] border-b border-slate-800/80 px-4 flex items-center justify-between gap-4">
+        <div className="h-11 shrink-0 bg-[#10131a] border-b border-white/[0.06] px-5 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             {activeProject ? (
               <>
@@ -1699,7 +1699,7 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
                   <select
                     value={currentClip?.id || ''}
                     onChange={(e) => onSelectClip(e.target.value)}
-                    className="bg-[#0b0d11] border border-slate-800 rounded-md px-2 py-1 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 max-w-[260px]"
+                    className="bg-[#0b0d12] border border-white/[0.07] rounded-lg px-2.5 py-1 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70 max-w-[260px]"
                   >
                     {activeProject.clips.map((c, idx) => (
                       <option key={c.id} value={c.id}>
@@ -1712,7 +1712,7 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
                   <button
                     type="button"
                     onClick={() => onOpenManualClipModal(activeProject.id)}
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-indigo-300 bg-indigo-500/10 border border-indigo-500/30 hover:bg-indigo-500/20 whitespace-nowrap cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium text-blue-300 bg-blue-500/12 hover:bg-blue-500/22 whitespace-nowrap cursor-pointer transition-colors"
                   >
                     <Plus className="w-3 h-3" />
                     <span>Nuevo Clip</span>
@@ -1722,7 +1722,7 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
                   <button
                     type="button"
                     onClick={() => relinkInputRef.current?.click()}
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-amber-200 bg-amber-500/15 border border-amber-500/35 hover:bg-amber-500/25 whitespace-nowrap cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium text-amber-200 bg-amber-500/15 border border-amber-500/30 hover:bg-amber-500/25 whitespace-nowrap cursor-pointer"
                   >
                     <FolderOpen className="w-3 h-3" />
                     <span>Re-vincular MP4</span>
@@ -1745,7 +1745,7 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
               disabled={!canUndo}
               onClick={handleUndo}
               title="Deshacer (Ctrl+Z)"
-              className="p-1.5 rounded-md text-slate-300 bg-[#191d26] border border-slate-800 hover:bg-[#222733] disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed"
+              className="p-1.5 rounded-lg text-slate-300 bg-white/[0.04] hover:bg-white/[0.09] disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed transition-colors"
             >
               <Undo2 className="w-3.5 h-3.5" />
             </button>
@@ -1754,22 +1754,22 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
               disabled={!canRedo}
               onClick={handleRedo}
               title="Rehacer (Ctrl+Shift+Z)"
-              className="p-1.5 rounded-md text-slate-300 bg-[#191d26] border border-slate-800 hover:bg-[#222733] disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed mr-1"
+              className="p-1.5 rounded-lg text-slate-300 bg-white/[0.04] hover:bg-white/[0.09] disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed mr-1.5 transition-colors"
             >
               <Redo2 className="w-3.5 h-3.5" />
             </button>
             <button
               type="button"
               onClick={() => videoInputRef.current?.click()}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] whitespace-nowrap cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-200 bg-white/[0.05] hover:bg-white/[0.09] whitespace-nowrap cursor-pointer transition-colors"
             >
-              <Film className="w-3.5 h-3.5 text-indigo-400" />
+              <Film className="w-3.5 h-3.5 text-blue-400" />
               <span>Subir Video</span>
             </button>
             <button
               type="button"
               onClick={() => bgmInputRef.current?.click()}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] whitespace-nowrap cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-200 bg-white/[0.05] hover:bg-white/[0.09] whitespace-nowrap cursor-pointer transition-colors"
             >
               <Music className="w-3.5 h-3.5 text-emerald-400" />
               <span>Música</span>
@@ -1777,7 +1777,7 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
             <button
               type="button"
               onClick={() => srtInputRef.current?.click()}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] whitespace-nowrap cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-200 bg-white/[0.05] hover:bg-white/[0.09] whitespace-nowrap cursor-pointer transition-colors"
             >
               <FileText className="w-3.5 h-3.5 text-amber-400" />
               <span>Importar .SRT</span>

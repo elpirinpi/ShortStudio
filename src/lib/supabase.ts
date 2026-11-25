@@ -2,11 +2,39 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { AppSettings, ClipProject, ScheduledPost } from '../types/editor';
 
 const rawUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
-const rawKey = (
-  import.meta.env.VITE_SUPABASE_ANON_KEY ||
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-  ''
-).trim();
+const candidateKeys = [
+  (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '').trim(),
+  (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim(),
+];
+
+function isPlaceholderKey(key: string): boolean {
+  return (
+    !key ||
+    key === 'MY_SUPABASE_ANON_KEY' ||
+    key === 'MY_SUPABASE_PUBLISHABLE_KEY'
+  );
+}
+
+function isSecretSupabaseKey(key: string): boolean {
+  if (!key) return false;
+  if (key.startsWith('sb_secret_')) return true;
+  if (key.startsWith('eyJ')) {
+    try {
+      const payloadSeg = key.split('.')[1];
+      if (payloadSeg) {
+        const b64 = payloadSeg.replace(/-/g, '+').replace(/_/g, '/');
+        const json = JSON.parse(atob(b64)) as { role?: string };
+        if (json?.role === 'service_role') return true;
+      }
+    } catch {
+      // ignore malformed JWT payload
+    }
+  }
+  return false;
+}
+
+const usableKeys = candidateKeys.filter((k) => !isPlaceholderKey(k));
+const publicKey = usableKeys.find((k) => !isSecretSupabaseKey(k)) || '';
 
 function isValidSupabaseUrl(url: string): boolean {
   if (!url || url === 'MY_SUPABASE_URL') return false;
@@ -19,15 +47,13 @@ function isValidSupabaseUrl(url: string): boolean {
 }
 
 export const hasSupabaseUrl = isValidSupabaseUrl(rawUrl);
-export const hasSupabaseKey =
-  Boolean(rawKey) &&
-  rawKey !== 'MY_SUPABASE_ANON_KEY' &&
-  rawKey !== 'MY_SUPABASE_PUBLISHABLE_KEY';
+export const hasSecretSupabaseKeyOnly = !publicKey && usableKeys.some((k) => isSecretSupabaseKey(k));
+export const hasSupabaseKey = Boolean(publicKey);
 
 export const isSupabaseConfigured = hasSupabaseUrl && hasSupabaseKey;
 
 export const supabase: SupabaseClient | null = isSupabaseConfigured
-  ? createClient(rawUrl, rawKey, {
+  ? createClient(rawUrl, publicKey, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
@@ -38,6 +64,9 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
 
 export function translateSupabaseError(message: string): string {
   const m = message.toLowerCase();
+  if (m.includes('forbidden use of secret api key')) {
+    return 'Se configuró una clave secreta (sb_secret / service_role) en lugar de la clave pública. Usa tu clave Publishable (sb_publishable_...) o anon public de Supabase.';
+  }
   if (m.includes('invalid login credentials')) {
     return 'Correo electrónico o contraseña incorrectos.';
   }

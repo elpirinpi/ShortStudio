@@ -221,10 +221,10 @@ export function SchedulerPage({
   };
 
   return (
-    <main className="flex-1 overflow-y-auto bg-[#0b0d11] p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
-        <div className="border-b border-slate-800/80 pb-4 space-y-1">
-          <h1 className="text-xl font-bold tracking-tight text-slate-100">
+    <main className="flex-1 overflow-y-auto bg-[#0b0d12] p-6 sm:p-8">
+      <div className="max-w-6xl mx-auto space-y-7">
+        <div className="border-b border-white/[0.06] pb-5 space-y-1.5">
+          <h1 className="text-xl font-bold tracking-tight text-white">
             Programador de Publicaciones
           </h1>
           <p className="text-xs text-slate-400">
@@ -233,20 +233,20 @@ export function SchedulerPage({
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-7 items-start">
           {/* Schedule Form */}
           <form
             onSubmit={handleSubmit}
-            className="lg:col-span-5 bg-[#12151c] border border-slate-800/90 rounded-xl p-5 space-y-4"
+            className="lg:col-span-5 bg-[#12151c] border border-white/[0.06] rounded-2xl p-6 space-y-4"
           >
-            <h2 className="text-sm font-semibold text-slate-100">Programar nuevo clip</h2>
+            <h2 className="text-sm font-semibold text-white">Programar nuevo clip</h2>
 
-            <label className="flex flex-col gap-1">
+            <label className="flex flex-col gap-1.5">
               <span className="text-[11px] text-slate-400">Proyecto</span>
               <select
                 value={activeProject?.id || ''}
                 onChange={(e) => handleProjectSelect(e.target.value)}
-                className="bg-[#0b0d11] border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                className="bg-[#0b0d12] border border-white/[0.06] rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
               >
                 {projects.length === 0 ? (
                   <option value="">Sin proyectos disponibles</option>
@@ -260,12 +260,12 @@ export function SchedulerPage({
               </select>
             </label>
 
-            <label className="flex flex-col gap-1">
+            <label className="flex flex-col gap-1.5">
               <span className="text-[11px] text-slate-400">Clip</span>
               <select
                 value={activeClip?.id || ''}
                 onChange={(e) => handleClipSelect(e.target.value)}
-                className="bg-[#0b0d11] border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                className="bg-[#0b0d12] border border-white/[0.06] rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
               >
                 {!activeProject || activeProject.clips.length === 0 ? (
                   <option value="">Sin clips</option>
@@ -280,12 +280,12 @@ export function SchedulerPage({
             </label>
 
             <div className="grid grid-cols-2 gap-3">
-              <label className="flex flex-col gap-1">
+              <label className="flex flex-col gap-1.5">
                 <span className="text-[11px] text-slate-400">Plataforma</span>
                 <select
                   value={platform}
                   onChange={(e) => setPlatform(e.target.value as SocialPlatform)}
-                  className="bg-[#0b0d11] border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                  className="bg-[#0b0d12] border border-white/[0.06] rounded-xl px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
                 >
                   <option value="youtube_shorts">YouTube Shorts</option>
                   <option value="tiktok">TikTok</option>
@@ -293,14 +293,14 @@ export function SchedulerPage({
                 </select>
               </label>
 
-              <label className="flex flex-col gap-1">
+              <label className="flex flex-col gap-1.5">
                 <span className="text-[11px] text-slate-400">Visibilidad</span>
                 <select
                   value={visibility}
                   onChange={(e) =>
                     setVisibility(e.target.value as 'public' | 'unlisted' | 'private')
                   }
-                  className="bg-[#0b0d11] border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                  className="bg-[#0b0d12] border border-white/[0.06] rounded-xl px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
                 >
                   <option value="public">Público</option>
                   <option value="unlisted">Oculto</option>
@@ -309,42 +309,42 @@ export function SchedulerPage({
               </label>
             </div>
 
-            <label className="flex flex-col gap-1">
+            <label className="flex flex-col gap-1.5">
               <span className="text-[11px] text-slate-400">Fecha y hora</span>
               <input
                 type="datetime-local"
                 value={scheduledAt}
                 onChange={(e) => setScheduledAt(e.target.value)}
-                className="bg-[#0b0d11] border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono-tabular text-slate-100 focus:outline-none focus:border-indigo-500"
+                className="bg-[#0b0d12] border border-white/[0.06] rounded-xl px-3 py-2 text-xs font-mono-tabular text-slate-100 focus:outline-none focus:border-blue-500/70"
               />
             </label>
 
-            <label className="flex flex-col gap-1">
+            <label className="flex flex-col gap-1.5">
               <span className="text-[11px] text-slate-400">Título / Descripción</span>
               <textarea
                 rows={2}
                 value={caption}
                 onChange={(e) => setCaption(e.target.value)}
                 placeholder="Título gancho para el Short..."
-                className="bg-[#0b0d11] border border-slate-800 rounded-lg p-2.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 resize-y"
+                className="bg-[#0b0d12] border border-white/[0.06] rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70 resize-y"
               />
             </label>
 
-            <label className="flex flex-col gap-1">
+            <label className="flex flex-col gap-1.5">
               <span className="text-[11px] text-slate-400">Hashtags</span>
               <input
                 type="text"
                 value={hashtags}
                 onChange={(e) => setHashtags(e.target.value)}
                 placeholder="#shorts #tiktok #edicion"
-                className="bg-[#0b0d11] border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                className="bg-[#0b0d12] border border-white/[0.06] rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500/70"
               />
             </label>
 
             <button
               type="submit"
               disabled={!activeProject || !activeClip}
-              className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-45 cursor-pointer"
+              className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-45 cursor-pointer transition-colors"
             >
               <Calendar className="w-3.5 h-3.5" />
               <span>Añadir al Calendario</span>
@@ -363,7 +363,7 @@ export function SchedulerPage({
                     <button
                       type="button"
                       onClick={exportQueueCsv}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-200 bg-[#12151c] border border-slate-800 hover:bg-[#191d26] cursor-pointer whitespace-nowrap"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-200 bg-[#12151c] border border-white/[0.06] hover:bg-[#181c25] cursor-pointer whitespace-nowrap transition-colors"
                     >
                       <Download className="w-3 h-3 text-slate-400" />
                       <span>.CSV</span>
@@ -371,14 +371,14 @@ export function SchedulerPage({
                     <button
                       type="button"
                       onClick={exportQueueIcs}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-200 bg-[#12151c] border border-slate-800 hover:bg-[#191d26] cursor-pointer whitespace-nowrap"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-200 bg-[#12151c] border border-white/[0.06] hover:bg-[#181c25] cursor-pointer whitespace-nowrap transition-colors"
                     >
-                      <Calendar className="w-3 h-3 text-indigo-400" />
+                      <Calendar className="w-3 h-3 text-blue-400" />
                       <span>.ICS</span>
                     </button>
                   </div>
                 )}
-                <div className="flex items-center gap-1 bg-[#12151c] border border-slate-800 p-1 rounded-lg">
+                <div className="flex items-center gap-1 bg-[#12151c] p-1 rounded-xl">
                   {(
                     [
                       { id: 'all', label: 'Todas' },
@@ -391,10 +391,10 @@ export function SchedulerPage({
                       key={tab.id}
                       type="button"
                       onClick={() => setPlatformFilter(tab.id)}
-                      className={`px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer whitespace-nowrap ${
+                      className={`px-3 py-1 rounded-lg text-xs font-medium cursor-pointer whitespace-nowrap transition-colors ${
                         platformFilter === tab.id
-                          ? 'bg-indigo-600 text-white'
-                          : 'text-slate-400 hover:text-slate-200'
+                          ? 'bg-blue-600 text-white'
+                          : 'text-slate-400 hover:text-slate-100'
                       }`}
                     >
                       {tab.label}
@@ -405,8 +405,8 @@ export function SchedulerPage({
             </div>
 
             {filteredPosts.length === 0 ? (
-              <div className="bg-[#12151c] border border-slate-800/90 rounded-xl p-10 text-center space-y-2">
-                <p className="text-sm font-semibold text-slate-200">
+              <div className="bg-[#12151c] border border-white/[0.06] rounded-2xl p-12 text-center space-y-2">
+                <p className="text-sm font-semibold text-white">
                   No hay publicaciones en cola
                 </p>
                 <p className="text-xs text-slate-400">
@@ -414,16 +414,16 @@ export function SchedulerPage({
                 </p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-3.5">
                 {filteredPosts.map((post) => (
                   <article
                     key={post.id}
-                    className="bg-[#12151c] border border-slate-800/90 rounded-xl p-4 space-y-3"
+                    className="bg-[#12151c] border border-white/[0.06] hover:border-white/[0.1] transition-colors rounded-2xl p-5 space-y-3.5"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="space-y-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                          <span className="font-semibold text-indigo-300">
+                          <span className="font-semibold text-blue-400">
                             {PLATFORM_LABELS[post.platform]}
                           </span>
                           <span aria-hidden="true">·</span>
@@ -443,7 +443,7 @@ export function SchedulerPage({
                             {STATUS_LABELS[post.status]}
                           </span>
                         </div>
-                        <h3 className="text-sm font-semibold text-slate-100">{post.clipTitle}</h3>
+                        <h3 className="text-sm font-semibold text-white">{post.clipTitle}</h3>
                         <p className="text-xs text-slate-400">{post.hashtags}</p>
                       </div>
 
@@ -455,7 +455,7 @@ export function SchedulerPage({
                             e.target.value as ScheduledPost['status']
                           )
                         }
-                        className="bg-[#0b0d11] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                        className="bg-[#0b0d12] border border-white/[0.06] rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500/70"
                       >
                         <option value="scheduled">Programado</option>
                         <option value="ready">Listo para subir</option>
@@ -463,20 +463,20 @@ export function SchedulerPage({
                       </select>
                     </div>
 
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-white/[0.06]">
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
                           onClick={() => onOpenClipInEditor(post.projectId, post.clipId)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] cursor-pointer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-200 bg-[#181c25] hover:bg-[#222836] cursor-pointer transition-colors"
                         >
-                          <Scissors className="w-3 h-3 text-indigo-400" />
+                          <Scissors className="w-3 h-3 text-blue-400" />
                           <span>Exportar Video</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => copyPostText(post)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] cursor-pointer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-200 bg-[#181c25] hover:bg-[#222836] cursor-pointer transition-colors"
                         >
                           <Copy className="w-3 h-3 text-slate-400" />
                           <span>Copiar Texto</span>
@@ -484,7 +484,7 @@ export function SchedulerPage({
                         <button
                           type="button"
                           onClick={() => downloadPostSrt(post)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] cursor-pointer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-200 bg-[#181c25] hover:bg-[#222836] cursor-pointer transition-colors"
                         >
                           <Download className="w-3 h-3 text-slate-400" />
                           <span>.SRT</span>
@@ -493,7 +493,7 @@ export function SchedulerPage({
                           <button
                             type="button"
                             onClick={() => onUpdatePostStatus(post.id, 'published')}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 cursor-pointer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-emerald-300 bg-emerald-500/12 border border-emerald-500/25 hover:bg-emerald-500/20 cursor-pointer transition-colors"
                           >
                             <CheckCircle2 className="w-3 h-3" />
                             <span>Marcar Publicado</span>
@@ -505,7 +505,7 @@ export function SchedulerPage({
                         type="button"
                         onClick={() => onDeletePost(post.id)}
                         title="Eliminar publicación"
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 cursor-pointer"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 cursor-pointer transition-colors"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
