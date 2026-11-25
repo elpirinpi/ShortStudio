@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Code2, HardDrive, LogOut, Trash2, User } from 'lucide-react';
+import { Code2, Download, ExternalLink, HardDrive, LoaderCircle, LogOut, RefreshCw, Trash2, User } from 'lucide-react';
+import { DesktopUpdateState } from '../types/desktop';
 import {
   AiEngineMode,
   AppSettings,
@@ -15,6 +16,11 @@ interface SettingsPageProps {
   projectsCount: number;
   userEmail?: string | null;
   onSignOut?: () => void;
+  desktopUpdateState?: DesktopUpdateState | null;
+  onCheckForUpdates?: () => void;
+  onDownloadUpdate?: () => void;
+  onInstallUpdate?: () => void;
+  onOpenReleasePage?: () => void;
   onUpdateSettings: (next: AppSettings) => void;
   onClearAllData: () => Promise<void>;
 }
@@ -24,6 +30,11 @@ export function SettingsPage({
   projectsCount,
   userEmail,
   onSignOut,
+  desktopUpdateState,
+  onCheckForUpdates,
+  onDownloadUpdate,
+  onInstallUpdate,
+  onOpenReleasePage,
   onUpdateSettings,
   onClearAllData,
 }: SettingsPageProps) {
@@ -216,6 +227,112 @@ export function SettingsPage({
             <LogOut className="w-3.5 h-3.5" />
             <span>Cerrar Sesión</span>
           </button>
+        </section>
+
+        <section className="bg-[#12151c] border border-slate-800/90 rounded-xl p-5 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <RefreshCw className="w-5 h-5 text-indigo-400 mt-0.5" />
+            <div className="space-y-1">
+              <h2 className="text-sm font-semibold text-slate-100">
+                Actualizaciones Automáticas (GitHub)
+              </h2>
+              {desktopUpdateState ? (
+                <div className="space-y-1">
+                  <p className="text-xs text-slate-300">
+                    Versión instalada: <span className="font-mono-tabular font-semibold text-white">v{desktopUpdateState.currentVersion}</span>
+                    {' · '}
+                    {desktopUpdateState.isPortable ? 'Modo Portable (.exe)' : 'Instalador Windows'}
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    {desktopUpdateState.status === 'checking' && 'Buscando nuevos Releases en GitHub...'}
+                    {desktopUpdateState.status === 'up-to-date' &&
+                      `Estás al día con el último Release de ${desktopUpdateState.repo}.`}
+                    {desktopUpdateState.status === 'available' &&
+                      `Nueva versión v${desktopUpdateState.latestVersion} disponible en GitHub.`}
+                    {desktopUpdateState.status === 'downloading' &&
+                      `Descargando actualización v${desktopUpdateState.latestVersion} (${desktopUpdateState.progress}%)...`}
+                    {desktopUpdateState.status === 'downloaded' &&
+                      `Actualización v${desktopUpdateState.latestVersion} descargada y lista para instalar.`}
+                    {desktopUpdateState.status === 'installing' &&
+                      'Aplicando actualización y reiniciando...'}
+                    {desktopUpdateState.status === 'error' &&
+                      (desktopUpdateState.error || 'No se pudo verificar en GitHub.')}
+                    {desktopUpdateState.status === 'idle' &&
+                      `Repositorio: github.com/${desktopUpdateState.repo}`}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400">
+                  Versión web <span className="font-mono-tabular text-slate-200">v{import.meta.env.VITE_APP_VERSION || '1.0.0'}</span> · La app de escritorio (.exe) se actualiza automáticamente al publicar nuevos Releases en GitHub.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {desktopUpdateState ? (
+              <>
+                {desktopUpdateState.status === 'available' && onDownloadUpdate && (
+                  <button
+                    type="button"
+                    onClick={onDownloadUpdate}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Descargar v{desktopUpdateState.latestVersion}</span>
+                  </button>
+                )}
+                {desktopUpdateState.status === 'downloaded' && onInstallUpdate && (
+                  <button
+                    type="button"
+                    onClick={onInstallUpdate}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Actualizar y reiniciar</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={
+                    desktopUpdateState.status === 'checking' ||
+                    desktopUpdateState.status === 'downloading' ||
+                    desktopUpdateState.status === 'installing'
+                  }
+                  onClick={onCheckForUpdates}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] disabled:opacity-50 cursor-pointer"
+                >
+                  {desktopUpdateState.status === 'checking' ||
+                  desktopUpdateState.status === 'downloading' ? (
+                    <LoaderCircle className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  )}
+                  <span>Buscar actualizaciones</span>
+                </button>
+                {onOpenReleasePage && (
+                  <button
+                    type="button"
+                    onClick={onOpenReleasePage}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs text-slate-300 bg-[#0b0d11] border border-slate-800 hover:text-white cursor-pointer"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Releases</span>
+                  </button>
+                )}
+              </>
+            ) : (
+              <a
+                href="https://github.com/elpirinpi/ShortStudio/releases"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733]"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Ver Releases (.exe)</span>
+              </a>
+            )}
+          </div>
         </section>
 
         <section className="bg-[#12151c] border border-slate-800/90 rounded-xl p-5 flex flex-wrap items-center justify-between gap-4">

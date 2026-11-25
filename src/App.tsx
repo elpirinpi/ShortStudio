@@ -9,7 +9,9 @@ import { ResultsPage } from './components/ResultsPage';
 import { SchedulerPage } from './components/SchedulerPage';
 import { SettingsPage } from './components/SettingsPage';
 import { TopNav } from './components/TopNav';
+import { UpdateBanner } from './components/UpdateBanner';
 import { YouTubeImportModal } from './components/YouTubeImportModal';
+import { DesktopUpdateState } from './types/desktop';
 import {
   deleteCloudProject,
   deleteCloudScheduledPost,
@@ -124,11 +126,62 @@ export default function App() {
 
   const [authSession, setAuthSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(isSupabaseConfigured);
+  const [desktopUpdateState, setDesktopUpdateState] = useState<DesktopUpdateState | null>(null);
 
   const notify = useCallback((msg: string) => {
     setToastMsg(msg);
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
     toastTimerRef.current = window.setTimeout(() => setToastMsg(null), 2800);
+  }, []);
+
+  useEffect(() => {
+    const bridge = window.shortStudioDesktop;
+    if (!bridge?.isDesktop) return;
+    let mounted = true;
+    bridge
+      .getUpdateState()
+      .then((state) => {
+        if (mounted) setDesktopUpdateState(state);
+      })
+      .catch(() => {});
+    const unsubscribe = bridge.onUpdateState((state) => {
+      if (mounted) setDesktopUpdateState(state);
+    });
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, []);
+
+  const handleCheckForUpdates = useCallback(() => {
+    const bridge = window.shortStudioDesktop;
+    if (!bridge?.isDesktop) return;
+    void bridge.checkForUpdates().then((state) => {
+      setDesktopUpdateState(state);
+      if (state.status === 'up-to-date') {
+        notify(`Ya tienes la última versión (v${state.currentVersion})`);
+      } else if (state.status === 'error' && state.error) {
+        notify(state.error);
+      }
+    });
+  }, [notify]);
+
+  const handleDownloadUpdate = useCallback(() => {
+    const bridge = window.shortStudioDesktop;
+    if (!bridge?.isDesktop) return;
+    void bridge.downloadUpdate();
+  }, []);
+
+  const handleInstallUpdate = useCallback(() => {
+    const bridge = window.shortStudioDesktop;
+    if (!bridge?.isDesktop) return;
+    void bridge.installUpdate().then((res) => {
+      if (!res.ok && res.error) notify(res.error);
+    });
+  }, [notify]);
+
+  const handleOpenReleasePage = useCallback(() => {
+    void window.shortStudioDesktop?.openReleasePage();
   }, []);
 
   useEffect(() => {
@@ -951,11 +1004,29 @@ export default function App() {
   }
 
   if (!authSession) {
-    return <LoginScreen />;
+    return (
+      <div className="min-h-screen w-screen flex flex-col bg-[#0b0d11]">
+        <UpdateBanner
+          updateState={desktopUpdateState}
+          onDownload={handleDownloadUpdate}
+          onInstall={handleInstallUpdate}
+          onOpenRelease={handleOpenReleasePage}
+        />
+        <div className="flex-1 flex flex-col">
+          <LoginScreen />
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="h-screen w-screen overflow-hidden flex flex-col bg-[#0b0d11] text-slate-100">
+      <UpdateBanner
+        updateState={desktopUpdateState}
+        onDownload={handleDownloadUpdate}
+        onInstall={handleInstallUpdate}
+        onOpenRelease={handleOpenReleasePage}
+      />
       <TopNav
         activeView={activeView}
         onNavigate={setActiveView}
@@ -1056,6 +1127,11 @@ export default function App() {
           projectsCount={projects.length}
           userEmail={authSession.user.email ?? null}
           onSignOut={handleSignOut}
+          desktopUpdateState={desktopUpdateState}
+          onCheckForUpdates={handleCheckForUpdates}
+          onDownloadUpdate={handleDownloadUpdate}
+          onInstallUpdate={handleInstallUpdate}
+          onOpenReleasePage={handleOpenReleasePage}
           onUpdateSettings={handleUpdateAppSettings}
           onClearAllData={handleClearAllData}
         />

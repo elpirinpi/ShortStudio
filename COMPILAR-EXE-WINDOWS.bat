@@ -18,7 +18,7 @@ if errorlevel 1 (
 )
 
 echo [1/4] Instalando dependencias principales...
-call npm install
+call npm install --no-audit --no-fund --legacy-peer-deps
 if errorlevel 1 (
   echo [ERROR] Fallo npm install.
   pause
@@ -45,7 +45,7 @@ echo.
 echo [3/4] Preparando paquete Electron Desktop...
 if exist "electron\dist" rmdir /s /q "electron\dist"
 xcopy /E /I /Y "dist" "electron\dist" >nul
-call npm --prefix electron install
+call npm --prefix electron install --no-audit --no-fund --legacy-peer-deps
 if errorlevel 1 (
   echo [ERROR] Fallo instalacion de Electron.
   pause

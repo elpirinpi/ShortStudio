@@ -24,11 +24,26 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Compute release version
+        shell: pwsh
+        run: |
+          if ("${{ github.ref }}".StartsWith("refs/tags/v")) {
+            $tag = "${{ github.ref_name }}"
+            $ver = $tag.TrimStart("v")
+          } else {
+            $ver = "1.0.${{ github.run_number }}"
+            $tag = "v$ver"
+          }
+          "APP_VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          node -e "const fs=require('fs'); for (const p of ['package.json','electron/package.json']) { const j=JSON.parse(fs.readFileSync(p,'utf8')); j.version=process.env.APP_VERSION; fs.writeFileSync(p, JSON.stringify(j,null,2)+'\n'); }"
+
       - name: Install root dependencies
-        run: npm install --no-audit --no-fund
+        run: npm install --no-audit --no-fund --legacy-peer-deps
 
       - name: Build frontend and server bundle
         env:
+          VITE_APP_VERSION: ${{ env.APP_VERSION }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || vars.VITE_SUPABASE_ANON_KEY }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY || vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
@@ -41,7 +56,7 @@ jobs:
         run: |
           if (Test-Path electron/dist) { Remove-Item -Recurse -Force electron/dist }
           Copy-Item -Recurse -Force dist electron/dist
-          npm --prefix electron install --no-audit --no-fund
+          npm --prefix electron install --no-audit --no-fund --legacy-peer-deps
 
       - name: Package Windows .exe (Installer + Portable)
         env:
@@ -59,17 +74,17 @@ jobs:
       - name: Publish GitHub Release with Windows .exe
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.0' }}
-          name: KellyClipAi Studio ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.0' }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: KellyClipAi Studio ${{ env.RELEASE_TAG }}
           make_latest: true
           prerelease: false
           files: |
             release/KellyClipAi-Studio-Setup-*.exe
             release/KellyClipAi-Studio-Portable-*.exe
           body: |
-            **KellyClipAi Studio (ShortStudio)** para Windows x64 (ejecución 100% local sin hosting).
+            **KellyClipAi Studio (ShortStudio) ${{ env.RELEASE_TAG }}** para Windows x64 (ejecución 100% local + autoactualización desde GitHub).
             Desarrollado por **Kelly Benjamin De La Cruz**.
 
             Incluye:
-            - `KellyClipAi-Studio-Portable-1.0.0.exe` (ejecutable directo sin instalación)
-            - `KellyClipAi-Studio-Setup-1.0.0.exe` (instalador completo para Windows)
+            - `KellyClipAi-Studio-Portable-${{ env.APP_VERSION }}.exe` (ejecutable directo sin instalación)
+            - `KellyClipAi-Studio-Setup-${{ env.APP_VERSION }}.exe` (instalador completo para Windows)
