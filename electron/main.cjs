@@ -120,6 +120,24 @@ function selectWindowsReleaseAsset(assets) {
   );
 }
 
+function isValidWindowsExe(filePath, minBytes = 5 * 1024 * 1024) {
+  try {
+    if (!fs.existsSync(filePath)) return false;
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile() || stat.size < minBytes) return false;
+    const fd = fs.openSync(filePath, 'r');
+    try {
+      const header = Buffer.alloc(2);
+      const bytesRead = fs.readSync(fd, header, 0, 2, 0);
+      return bytesRead === 2 && header[0] === 0x4d && header[1] === 0x5a; // 'MZ'
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
+}
+
 async function checkForUpdates({ manual = false } = {}) {
   if (
     updateState.status === 'downloading' ||
@@ -197,8 +215,18 @@ async function checkForUpdates({ manual = false } = {}) {
       'kellyclipai-updates',
       safeAssetName
     );
-    const alreadyDownloaded =
-      fs.existsSync(existingPath) && fs.statSync(existingPath).size > 1024 * 1024;
+    const expectedMinSize =
+      typeof asset.size === 'number' && asset.size > 1024 * 1024
+        ? asset.size
+        : 15 * 1024 * 1024;
+    const alreadyDownloaded = isValidWindowsExe(existingPath, expectedMinSize);
+    if (!alreadyDownloaded && fs.existsSync(existingPath)) {
+      try {
+        fs.unlinkSync(existingPath);
+      } catch {
+        // ignore stale corrupt partial file
+      }
+    }
 
     return broadcastUpdateState({
       status: alreadyDownloaded ? 'downloaded' : 'available',
@@ -300,6 +328,13 @@ async function downloadUpdate() {
         })();
       });
 
+      if (totalBytes > 0 && received !== totalBytes) {
+        throw new Error('La descarga del instalador quedó incompleta.');
+      }
+      if (!isValidWindowsExe(partPath, 5 * 1024 * 1024)) {
+        throw new Error('El archivo descargado no es un ejecutable Windows válido.');
+      }
+
       if (fs.existsSync(finalPath)) {
         fs.unlinkSync(finalPath);
       }
@@ -337,90 +372,201 @@ function escapePsSingleQuoted(value) {
   return String(value).replace(/'/g, "''");
 }
 
-function installDownloadedUpdate() {
+function resolveWindowsPowerShell() {
+  const sysRoot = process.env.SystemRoot || 'C:\\Windows';
+  const candidate = path.join(sysRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  return fs.existsSync(candidate) ? candidate : 'powershell.exe';
+}
+
+function spawnDetachedChecked(command, args) {
+  return new Promise((resolve) => {
+    let settled = false;
+    try {
+      const child = spawn(command, args, {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+      child.once('error', (err) => {
+        if (!settled) {
+          settled = true;
+          resolve({ ok: false, error: err instanceof Error ? err.message : String(err) });
+        }
+      });
+      setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          try {
+            child.unref();
+          } catch {
+            // ignore
+          }
+          resolve({ ok: true });
+        }
+      }, 150);
+    } catch (err) {
+      if (!settled) {
+        settled = true;
+        resolve({ ok: false, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  });
+}
+
+async function installDownloadedUpdate() {
   if (process.platform !== 'win32') {
     return {
       ok: false,
       error: 'La autoinstalación aplica únicamente en Windows (.exe).',
     };
   }
-  if (!updateState.downloadedPath || !fs.existsSync(updateState.downloadedPath)) {
+
+  const downloadedExe = updateState.downloadedPath;
+  if (!downloadedExe || !isValidWindowsExe(downloadedExe, 5 * 1024 * 1024)) {
+    try {
+      if (downloadedExe && fs.existsSync(downloadedExe)) {
+        fs.unlinkSync(downloadedExe);
+      }
+    } catch {
+      // ignore
+    }
+    broadcastUpdateState({
+      status: updateState.downloadUrl ? 'available' : 'error',
+      downloadedPath: null,
+      progress: 0,
+      error: 'El archivo descargado estaba incompleto o dañado. Descárgalo de nuevo.',
+    });
     return {
       ok: false,
-      error: 'El archivo de actualización aún no está descargado.',
+      error: 'El archivo descargado estaba incompleto o dañado. Descárgalo de nuevo.',
     };
   }
 
   broadcastUpdateState({ status: 'installing', error: null });
 
-  const downloadedExe = updateState.downloadedPath;
-  const helperScript = path.join(
-    os.tmpdir(),
-    'kellyclipai-updates',
-    `apply-update-${Date.now()}.ps1`
-  );
+  const updatesDir = path.join(os.tmpdir(), 'kellyclipai-updates');
+  fs.mkdirSync(updatesDir, { recursive: true });
+  const logFile = path.join(updatesDir, 'update-helper.log');
+  const assetIsSetup = /setup/i.test(path.basename(downloadedExe));
+  const shouldReplacePortable = Boolean(IS_PORTABLE && PORTABLE_EXE_PATH && !assetIsSetup);
 
-  let scriptBody = '';
-  if (IS_PORTABLE && PORTABLE_EXE_PATH) {
+  let launchRes = { ok: false, error: '' };
+
+  if (shouldReplacePortable) {
     const targetExe = PORTABLE_EXE_PATH;
     const backupExe = `${targetExe}.bak`;
-    scriptBody = [
-      `$ErrorActionPreference = 'Stop'`,
+    const psScript = [
+      `$ErrorActionPreference = 'Continue'`,
+      `$log = '${escapePsSingleQuoted(logFile)}'`,
       `$appPid = ${process.pid}`,
       `$newExe = '${escapePsSingleQuoted(downloadedExe)}'`,
       `$targetExe = '${escapePsSingleQuoted(targetExe)}'`,
       `$backupExe = '${escapePsSingleQuoted(backupExe)}'`,
+      `Add-Content -LiteralPath $log -Value ("[" + (Get-Date -Format s) + "] Portable update started PID=" + $appPid)`,
       `for ($i = 0; $i -lt 40; $i++) {`,
       `  if (-not (Get-Process -Id $appPid -ErrorAction SilentlyContinue)) { break }`,
-      `  Start-Sleep -Milliseconds 350`,
+      `  Start-Sleep -Milliseconds 300`,
       `}`,
-      `Start-Sleep -Milliseconds 400`,
-      `if (Test-Path -LiteralPath $backupExe) { Remove-Item -LiteralPath $backupExe -Force -ErrorAction SilentlyContinue }`,
-      `if (Test-Path -LiteralPath $targetExe) { Move-Item -LiteralPath $targetExe -Destination $backupExe -Force }`,
-      `try {`,
-      `  Move-Item -LiteralPath $newExe -Destination $targetExe -Force`,
-      `  if (Test-Path -LiteralPath $backupExe) { Remove-Item -LiteralPath $backupExe -Force -ErrorAction SilentlyContinue }`,
-      `} catch {`,
-      `  if ((Test-Path -LiteralPath $backupExe) -and -not (Test-Path -LiteralPath $targetExe)) {`,
-      `    Move-Item -LiteralPath $backupExe -Destination $targetExe -Force`,
+      `Start-Sleep -Milliseconds 900`,
+      `Unblock-File -LiteralPath $newExe -ErrorAction SilentlyContinue`,
+      `$replaced = $false`,
+      `for ($attempt = 0; $attempt -lt 18; $attempt++) {`,
+      `  try {`,
+      `    if (Test-Path -LiteralPath $backupExe) { Remove-Item -LiteralPath $backupExe -Force -ErrorAction Stop }`,
+      `    if (Test-Path -LiteralPath $targetExe) { Move-Item -LiteralPath $targetExe -Destination $backupExe -Force -ErrorAction Stop }`,
+      `    try {`,
+      `      Move-Item -LiteralPath $newExe -Destination $targetExe -Force -ErrorAction Stop`,
+      `    } catch {`,
+      `      Copy-Item -LiteralPath $newExe -Destination $targetExe -Force -ErrorAction Stop`,
+      `      Remove-Item -LiteralPath $newExe -Force -ErrorAction SilentlyContinue`,
+      `    }`,
+      `    if (Test-Path -LiteralPath $backupExe) { Remove-Item -LiteralPath $backupExe -Force -ErrorAction SilentlyContinue }`,
+      `    $replaced = $true`,
+      `    break`,
+      `  } catch {`,
+      `    if ((Test-Path -LiteralPath $backupExe) -and -not (Test-Path -LiteralPath $targetExe)) {`,
+      `      Move-Item -LiteralPath $backupExe -Destination $targetExe -Force -ErrorAction SilentlyContinue`,
+      `    }`,
+      `    Start-Sleep -Milliseconds 500`,
       `  }`,
-      `  throw`,
       `}`,
-      `Start-Process -FilePath $targetExe`,
+      `if ($replaced -and (Test-Path -LiteralPath $targetExe)) {`,
+      `  Add-Content -LiteralPath $log -Value ("[" + (Get-Date -Format s) + "] Launching updated portable: " + $targetExe)`,
+      `  Start-Process -FilePath $targetExe`,
+      `} else {`,
+      `  Add-Content -LiteralPath $log -Value ("[" + (Get-Date -Format s) + "] Portable replace skipped; launching downloaded directly: " + $newExe)`,
+      `  Start-Process -FilePath $newExe`,
+      `}`,
     ].join('\r\n');
+
+    const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
+    launchRes = await spawnDetachedChecked(resolveWindowsPowerShell(), [
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-WindowStyle',
+      'Hidden',
+      '-EncodedCommand',
+      encoded,
+    ]);
   } else {
-    const currentExec = process.execPath;
-    scriptBody = [
+    // Launch the Windows installer (.exe) visibly after Electron closes (never hidden /S)
+    const psSetup = [
+      `$ErrorActionPreference = 'Stop'`,
+      `$log = '${escapePsSingleQuoted(logFile)}'`,
       `$appPid = ${process.pid}`,
       `$installer = '${escapePsSingleQuoted(downloadedExe)}'`,
-      `$relaunchExe = '${escapePsSingleQuoted(currentExec)}'`,
+      `Add-Content -LiteralPath $log -Value ("[" + (Get-Date -Format s) + "] Setup launch queued PID=" + $appPid)`,
       `for ($i = 0; $i -lt 40; $i++) {`,
       `  if (-not (Get-Process -Id $appPid -ErrorAction SilentlyContinue)) { break }`,
-      `  Start-Sleep -Milliseconds 350`,
+      `  Start-Sleep -Milliseconds 250`,
       `}`,
-      `Start-Sleep -Milliseconds 400`,
-      `$proc = Start-Process -FilePath $installer -ArgumentList '/S' -Wait -PassThru`,
-      `if ($proc.ExitCode -eq 0 -and (Test-Path -LiteralPath $relaunchExe)) {`,
-      `  Start-Process -FilePath $relaunchExe`,
+      `Start-Sleep -Milliseconds 700`,
+      `Unblock-File -LiteralPath $installer -ErrorAction SilentlyContinue`,
+      `Add-Content -LiteralPath $log -Value ("[" + (Get-Date -Format s) + "] Launching Setup: " + $installer)`,
+      `try {`,
+      `  Start-Process -FilePath $installer -WindowStyle Normal`,
+      `} catch {`,
+      `  Add-Content -LiteralPath $log -Value ("[" + (Get-Date -Format s) + "] Setup launch error: " + $_.Exception.Message)`,
       `}`,
     ].join('\r\n');
+
+    const encoded = Buffer.from(psSetup, 'utf16le').toString('base64');
+    launchRes = await spawnDetachedChecked(resolveWindowsPowerShell(), [
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-WindowStyle',
+      'Hidden',
+      '-EncodedCommand',
+      encoded,
+    ]);
   }
 
-  fs.writeFileSync(helperScript, scriptBody, 'utf8');
-
-  const child = spawn(
-    'powershell.exe',
-    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', helperScript],
-    {
-      detached: true,
-      stdio: 'ignore',
+  if (!launchRes.ok) {
+    // Direct Windows ShellExecute fallback so the installer always opens visibly
+    const openErr = await shell.openPath(downloadedExe);
+    if (openErr) {
+      broadcastUpdateState({
+        status: 'downloaded',
+        error: `No se pudo abrir el instalador automáticamente (${openErr}).`,
+      });
+      return {
+        ok: false,
+        error: `No se pudo abrir el instalador (${openErr}).`,
+      };
     }
-  );
-  child.unref();
+  }
 
   setTimeout(() => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.destroy();
+    }
     app.quit();
-  }, 250);
+    setTimeout(() => {
+      app.exit(0);
+    }, 600);
+  }, 180);
 
   return { ok: true };
 }
@@ -503,7 +649,14 @@ function buildAppMenu() {
                 const dl =
                   state.status === 'downloaded' ? state : await downloadUpdate();
                 if (dl.status === 'downloaded') {
-                  installDownloadedUpdate();
+                  const installRes = await installDownloadedUpdate();
+                  if (!installRes.ok && installRes.error) {
+                    dialog.showMessageBox(mainWindow || undefined, {
+                      type: 'warning',
+                      title: 'No se pudo iniciar el instalador',
+                      message: installRes.error,
+                    });
+                  }
                 }
               }
             } else if (state.status === 'up-to-date') {
@@ -679,6 +832,7 @@ app.on('before-quit', () => {
   }
   if (serverHandle && serverHandle.server) {
     try {
+      serverHandle.server.closeAllConnections?.();
       serverHandle.server.close();
     } catch {
       // ignore
