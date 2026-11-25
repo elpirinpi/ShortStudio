@@ -37,6 +37,7 @@ export function ProjectsPage({
   const [filterMode, setFilterMode] = useState<'all' | 'demo' | 'local'>('all');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -258,14 +259,36 @@ export function ProjectsPage({
                       >
                         <CopyPlus className="w-3.5 h-3.5" />
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => onDeleteProject(project.id)}
-                        title="Eliminar proyecto"
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {confirmDeleteId === project.id ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setConfirmDeleteId(null);
+                              onDeleteProject(project.id);
+                            }}
+                            className="px-2 py-1 rounded-md text-[11px] font-semibold text-white bg-rose-600 hover:bg-rose-500 cursor-pointer"
+                          >
+                            Confirmar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="px-2 py-1 rounded-md text-[11px] text-slate-300 bg-[#191d26] border border-slate-800 hover:bg-[#222733] cursor-pointer"
+                          >
+                            No
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(project.id)}
+                          title="Eliminar proyecto"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </article>

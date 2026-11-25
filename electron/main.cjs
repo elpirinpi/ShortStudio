@@ -429,7 +429,9 @@ async function startEmbeddedBackend() {
   process.env.NODE_ENV = 'production';
   const distDir = path.join(__dirname, 'dist');
   const binDir = path.join(app.getPath('userData'), 'bin');
+  const mediaDir = path.join(app.getPath('userData'), 'media');
   fs.mkdirSync(binDir, { recursive: true });
+  fs.mkdirSync(mediaDir, { recursive: true });
 
   const serverEntry = path.join(__dirname, 'dist-server', 'server.mjs');
   const mod = await import(pathToFileURL(serverEntry).href);
@@ -443,6 +445,7 @@ async function startEmbeddedBackend() {
       host: '127.0.0.1',
       distDir,
       binDir,
+      mediaDir,
     });
   } catch {
     serverHandle = await mod.startServer({
@@ -450,6 +453,7 @@ async function startEmbeddedBackend() {
       host: '127.0.0.1',
       distDir,
       binDir,
+      mediaDir,
     });
   }
 

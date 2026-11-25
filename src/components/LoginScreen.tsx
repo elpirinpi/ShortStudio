@@ -338,8 +338,8 @@ export function LoginScreen() {
             )}
 
             {mode !== 'reset' && (
-              <label className="flex items-center justify-between gap-2 text-xs text-slate-300 cursor-pointer select-none">
-                <span className="inline-flex items-center gap-2">
+              <div className="flex items-center justify-between gap-2 text-xs text-slate-300 select-none">
+                <label className="inline-flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={rememberMe}
@@ -348,11 +348,28 @@ export function LoginScreen() {
                     className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
                   />
                   <span>Recordar mis credenciales</span>
-                </span>
-                <span className="text-[11px] text-slate-500">
-                  {isDesktopApp ? 'Cifrado Windows' : 'Correo y gestor seguro'}
-                </span>
-              </label>
+                </label>
+                <div className="flex items-center gap-2">
+                  {(email.trim() || password) && (
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => {
+                        handleToggleRememberMe(false);
+                        setEmail('');
+                        setPassword('');
+                        setSuccessMsg('Credenciales guardadas eliminadas de este equipo.');
+                      }}
+                      className="text-[11px] text-rose-400 hover:text-rose-300 cursor-pointer"
+                    >
+                      Olvidar
+                    </button>
+                  )}
+                  <span className="text-[11px] text-slate-500">
+                    {isDesktopApp ? 'Cifrado Windows' : 'Gestor seguro'}
+                  </span>
+                </div>
+              </div>
             )}
 
             {errorMsg && (

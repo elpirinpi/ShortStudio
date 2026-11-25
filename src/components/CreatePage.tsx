@@ -14,6 +14,7 @@ import {
   Scissors,
   Upload,
   Video,
+  X,
 } from 'lucide-react';
 import {
   AiEngineMode,
@@ -52,6 +53,7 @@ interface CreatePageProps {
   onSelectFile: (file: File) => void;
   onOpenRecorder: () => void;
   onImportUrl: (url: string) => Promise<boolean>;
+  onCancelImportUrl?: () => void;
   onDownloadConnectorLauncher: () => void;
   onSaveStagedToPc: () => void;
   onUpdateConfig: <K extends keyof ProjectConfig>(key: K, value: ProjectConfig[K]) => void;
@@ -75,6 +77,7 @@ export function CreatePage({
   onSelectFile,
   onOpenRecorder,
   onImportUrl,
+  onCancelImportUrl,
   onDownloadConnectorLauncher,
   onSaveStagedToPc,
   onUpdateConfig,
@@ -269,9 +272,21 @@ export function CreatePage({
                     <span className="text-slate-300 truncate">
                       {urlStatusText || 'Descargando MP4...'}
                     </span>
-                    <span className="font-mono-tabular font-semibold text-indigo-400 shrink-0">
-                      {Math.max(0, Math.min(100, Math.round(urlProgressPercent)))}%
-                    </span>
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      <span className="font-mono-tabular font-semibold text-indigo-400">
+                        {Math.max(0, Math.min(100, Math.round(urlProgressPercent)))}%
+                      </span>
+                      {onCancelImportUrl && (
+                        <button
+                          type="button"
+                          onClick={onCancelImportUrl}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-500/10 border border-rose-500/30 text-rose-300 hover:bg-rose-500/20 cursor-pointer"
+                        >
+                          <X className="w-3 h-3" />
+                          <span>Cancelar</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="h-1.5 bg-[#0b0d11] rounded-full overflow-hidden border border-slate-800">
                     <div
@@ -285,7 +300,7 @@ export function CreatePage({
               ) : (
                 <p className="text-[11px] text-slate-500 leading-relaxed">
                   {isDesktopApp
-                    ? 'Descarga nativa integrada en tu PC: pega enlaces de YouTube u otras plataformas y se descargan en 1080p MP4 sin cookies ni conector externo.'
+                    ? 'Motor PC integrado: los enlaces se descargan en 1080p MP4, se guardan automáticamente en Descargas\\ShortStudio y entran directo al editor.'
                     : connectorStatus.connected
                     ? 'Conector Windows activo: los enlaces se descargan en 1080p MP4 directo a Descargas\\ShortStudio y entran al editor sin cookies.'
                     : 'Usa el Conector Windows (1 clic) para descargar enlaces de YouTube directamente a tu carpeta Descargas en MP4 sin cookies ni capturas.'}

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   Calendar,
   Check,
   Download,
   FileText,
+  FolderOpen,
   LoaderCircle,
   Mic,
   Pause,
@@ -25,6 +27,7 @@ interface ResultsPageProps {
   retranscribeStatus?: string;
   onRetranscribeProject?: (projectId: string) => void;
   onOpenManualClipModal?: (projectId: string) => void;
+  onRelinkMedia?: (projectId: string, file: File) => void;
   onRenameClip?: (projectId: string, clipId: string, title: string) => void;
   onDeleteClip?: (projectId: string, clipId: string) => void;
   onEditClipInStudio: (projectId: string, clipId: string) => void;
@@ -122,6 +125,7 @@ export function ResultsPage({
   retranscribeStatus = '',
   onRetranscribeProject,
   onOpenManualClipModal,
+  onRelinkMedia,
   onRenameClip,
   onDeleteClip,
   onEditClipInStudio,
@@ -130,6 +134,8 @@ export function ResultsPage({
 }: ResultsPageProps) {
   const [editingClipId, setEditingClipId] = useState<string | null>(null);
   const [draftClipTitle, setDraftClipTitle] = useState('');
+  const [confirmDeleteClipId, setConfirmDeleteClipId] = useState<string | null>(null);
+  const relinkInputRef = useRef<HTMLInputElement | null>(null);
 
   if (!project) {
     return (
@@ -315,6 +321,41 @@ export function ResultsPage({
                 </div>
               ))}
             </div>
+          </section>
+        )}
+
+        {!project.isDemo && !mediaUrl && onRelinkMedia && (
+          <section className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-start gap-2.5 text-xs text-amber-200">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <p className="font-semibold text-amber-100">
+                  Video original no encontrado en este dispositivo
+                </p>
+                <p className="text-[11px] text-amber-200/80">
+                  Tus clips, cortes y subtítulos siguen guardados. Re-vincula el archivo «{project.mediaName}» desde tu PC para previsualizar y exportar.
+                </p>
+              </div>
+            </div>
+            <input
+              ref={relinkInputRef}
+              type="file"
+              accept="video/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) onRelinkMedia(project.id, file);
+                e.target.value = '';
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => relinkInputRef.current?.click()}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-slate-950 bg-amber-400 hover:bg-amber-300 cursor-pointer whitespace-nowrap"
+            >
+              <FolderOpen className="w-3.5 h-3.5" />
+              <span>Re-vincular video desde PC</span>
+            </button>
           </section>
         )}
 
@@ -520,15 +561,37 @@ export function ResultsPage({
                       <span>Descargar .SRT</span>
                     </button>
                     {onDeleteClip && (
-                      <button
-                        type="button"
-                        onClick={() => onDeleteClip(project.id, clip.id)}
-                        title="Eliminar este clip"
-                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-rose-300 bg-[#191d26] border border-slate-800 hover:bg-rose-500/10 hover:border-rose-500/40 cursor-pointer whitespace-nowrap ml-auto"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>Eliminar</span>
-                      </button>
+                      confirmDeleteClipId === clip.id ? (
+                        <div className="inline-flex items-center gap-1.5 ml-auto">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setConfirmDeleteClipId(null);
+                              onDeleteClip(project.id, clip.id);
+                            }}
+                            className="px-3 py-2 rounded-lg text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 cursor-pointer whitespace-nowrap"
+                          >
+                            Confirmar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteClipId(null)}
+                            className="px-3 py-2 rounded-lg text-xs font-medium text-slate-300 bg-[#191d26] border border-slate-800 hover:bg-[#222733] cursor-pointer whitespace-nowrap"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteClipId(clip.id)}
+                          title="Eliminar este clip"
+                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-rose-300 bg-[#191d26] border border-slate-800 hover:bg-rose-500/10 hover:border-rose-500/40 cursor-pointer whitespace-nowrap ml-auto"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Eliminar</span>
+                        </button>
+                      )
                     )}
                   </div>
                 </div>

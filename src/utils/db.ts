@@ -15,7 +15,8 @@ const STORE_SETTINGS = 'settings';
 
 export interface StoredMediaBlob {
   id: string;
-  blob: Blob;
+  blob?: Blob;
+  url?: string;
   name: string;
   mimeType: string;
   createdAt: string;
@@ -34,6 +35,10 @@ const memoryMediaStore = new Map<string, StoredMediaBlob>();
 const memoryProjectsStore = new Map<string, ClipProject>();
 const memoryPostsStore = new Map<string, ScheduledPost>();
 let memorySettingsCache: AppSettings | null = null;
+
+function isDesktopEnv(): boolean {
+  return typeof window !== 'undefined' && Boolean(window.shortStudioDesktop?.isDesktop);
+}
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -128,7 +133,7 @@ export async function saveMediaBlob(
   const mimeType = blob.type || 'video/mp4';
   const createdAt = new Date().toISOString();
 
-  // Always retain in memory first so analysis, editor & export never fail on Electron/Windows IDB Blob errors
+  // Always retain in memory first so analysis, editor & export stay instant in active session
   memoryMediaStore.set(id, {
     id,
     blob,
@@ -136,6 +141,24 @@ export async function saveMediaBlob(
     mimeType,
     createdAt,
   });
+
+  if (isDesktopEnv()) {
+    try {
+      const res = await fetch(`/api/local-media/${encodeURIComponent(id)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': mimeType,
+          'X-Media-Name': encodeURIComponent(name),
+        },
+        body: blob,
+      });
+      if (res.ok) {
+        return;
+      }
+    } catch {
+      // Fallback to IndexedDB below
+    }
+  }
 
   try {
     const db = await openDb();
@@ -172,6 +195,28 @@ export async function getMediaBlob(id: string): Promise<StoredMediaBlob | null> 
   const cached = memoryMediaStore.get(id);
   if (cached) return cached;
 
+  if (isDesktopEnv()) {
+    try {
+      const url = `/api/local-media/${encodeURIComponent(id)}`;
+      const head = await fetch(url, { method: 'HEAD' });
+      if (head.ok) {
+        const headerName = head.headers.get('x-media-name');
+        const mimeType = head.headers.get('content-type') || 'video/mp4';
+        const diskEntry: StoredMediaBlob = {
+          id,
+          url,
+          name: headerName ? decodeURIComponent(headerName) : `${id}.mp4`,
+          mimeType,
+          createdAt: new Date().toISOString(),
+        };
+        memoryMediaStore.set(id, diskEntry);
+        return diskEntry;
+      }
+    } catch {
+      // Fallback to IndexedDB lookup
+    }
+  }
+
   try {
     const db = await openDb();
     const res = await txPromise<RawMediaRecord | undefined>(db, STORE_MEDIA, 'readonly', (s) =>
@@ -204,6 +249,11 @@ export async function getMediaBlob(id: string): Promise<StoredMediaBlob | null> 
 
 export async function deleteMediaBlob(id: string): Promise<void> {
   memoryMediaStore.delete(id);
+  if (isDesktopEnv()) {
+    await fetch(`/api/local-media/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(
+      () => {}
+    );
+  }
   try {
     const db = await openDb();
     await txPromise(db, STORE_MEDIA, 'readwrite', (s) => s.delete(id));
@@ -344,6 +394,9 @@ export async function clearAllStudioData(): Promise<void> {
   memoryMediaStore.clear();
   memoryProjectsStore.clear();
   memoryPostsStore.clear();
+  if (isDesktopEnv()) {
+    await fetch('/api/local-media', { method: 'DELETE' }).catch(() => {});
+  }
   try {
     const db = await openDb();
     await Promise.all([

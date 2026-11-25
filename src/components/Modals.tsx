@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Download, Mic, Square, X } from 'lucide-react';
 
-export type ExportFormatOption = 'mp4-h264' | 'webm-fast';
+export type ExportFormatOption = 'mp4-h264' | 'ffmpeg-fast' | 'webm-fast';
 
 interface ExportOptionsModalProps {
   open: boolean;
@@ -62,12 +62,31 @@ export function ExportOptionsModal({
             }`}
           >
             <div className="flex items-center justify-between text-xs font-semibold">
-              <span>MP4 Universal (H.264 + AAC)</span>
-              <span className="text-[11px] font-medium text-indigo-400">Recomendado</span>
+              <span>MP4 Estudio 1:1 (WebCodecs Exacto)</span>
+              <span className="text-[11px] font-medium text-indigo-400">Máxima fidelidad</span>
             </div>
             <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-              Compatible con TikTok, Instagram Reels, YouTube Shorts, iPhone y editores como
-              CapCut o Premiere (transcodificado localmente con FFmpeg).
+              Renderiza idéntico a la vista previa (fuentes personalizadas, píldoras karaoke,
+              seguimiento facial y marca de agua) a 30fps exactos.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onSelectFormat('ffmpeg-fast')}
+            className={`w-full text-left p-3.5 rounded-lg border transition-colors cursor-pointer ${
+              selectedFormat === 'ffmpeg-fast'
+                ? 'bg-indigo-600/15 border-indigo-500 text-slate-100'
+                : 'bg-[#0b0d11] border-slate-800 text-slate-300 hover:border-slate-700'
+            }`}
+          >
+            <div className="flex items-center justify-between text-xs font-semibold">
+              <span>MP4 Ultra-Rápido (FFmpeg Nativo)</span>
+              <span className="text-[11px] font-medium text-emerald-400">5× más rápido</span>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+              Procesa el recorte, encuadre 9:16, subtítulos y barra de retención directamente con
+              FFmpeg nativo sin renderizar cuadro por cuadro.
             </p>
           </button>
 

@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import type { Request, Response } from 'express';
-import { execFile, spawn } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -11,6 +11,8 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { Innertube } from 'youtubei.js';
+import { buildAssSubtitles, type AssBuilderSettings, type AssSubtitleCue } from './server/assBuilder';
+import { cleanupOrphanedTempFiles } from './server/cleanup';
 
 const execFileAsync = promisify(execFile);
 
@@ -38,6 +40,7 @@ interface YouTubeOEmbed {
 }
 
 let activeBinDir: string | null = null;
+let activeMediaDir: string | null = process.env.SHORTSTUDIO_MEDIA_DIR || null;
 let cachedYtDlpPath: string | null = null;
 let cachedFfmpegPath: string | null = null;
 let cachedDenoPath: string | null = null;
@@ -391,13 +394,25 @@ function formatBytesPerSec(rawSpeed: string): string {
   return `${Math.round(num)} B/s`;
 }
 
+interface YtDlpControl {
+  signal?: AbortSignal;
+  onSpawn?: (child: ChildProcess) => void;
+}
+
 async function runYtDlpDownload(
   targetUrl: string,
   extraArgs: string[] = [],
-  onProgress?: (percent: number, label: string) => void
+  onProgress?: (percent: number, label: string) => void,
+  control?: YtDlpControl
 ): Promise<YtDlpResult | YtDlpError> {
+  if (control?.signal?.aborted) {
+    return { ok: false, reason: 'Descarga cancelada por el usuario.' };
+  }
   onProgress?.(4, 'Preparando motor yt-dlp...');
   const ytDlpBin = await ensureYtDlp();
+  if (control?.signal?.aborted) {
+    return { ok: false, reason: 'Descarga cancelada por el usuario.' };
+  }
   const workDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ytdlp_ss_'));
 
   const cleanup = async () => {
@@ -460,11 +475,25 @@ async function runYtDlpDownload(
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
+      control?.onSpawn?.(child);
 
       let stdoutBuf = '';
       let stderrBuf = '';
       let outLineBuf = '';
       let errLineBuf = '';
+      let aborted = false;
+
+      const onAbort = () => {
+        aborted = true;
+        try {
+          child.kill('SIGTERM');
+        } catch {
+          // ignore
+        }
+        clearTimeout(timeoutTimer);
+        reject(new Error('Descarga cancelada por el usuario.'));
+      };
+      control?.signal?.addEventListener('abort', onAbort, { once: true });
 
       const timeoutTimer = setTimeout(() => {
         try {
@@ -472,6 +501,7 @@ async function runYtDlpDownload(
         } catch {
           // ignore
         }
+        control?.signal?.removeEventListener('abort', onAbort);
         reject(new Error('Tiempo de espera agotado descargando el video.'));
       }, 180_000);
 
@@ -567,10 +597,13 @@ async function runYtDlpDownload(
       child.stderr?.on('data', (c: Buffer) => feedLines(c, true));
       child.on('error', (err) => {
         clearTimeout(timeoutTimer);
-        reject(err);
+        control?.signal?.removeEventListener('abort', onAbort);
+        if (!aborted) reject(err);
       });
       child.on('close', (code) => {
         clearTimeout(timeoutTimer);
+        control?.signal?.removeEventListener('abort', onAbort);
+        if (aborted) return;
         if (outLineBuf) handleLine(outLineBuf);
         if (errLineBuf) handleLine(errLineBuf);
         resolve({ stdout: stdoutBuf, stderr: stderrBuf, exitCode: code ?? 1 });
@@ -649,13 +682,21 @@ async function runYtDlpDownload(
   }
 }
 
-async function streamYtDlpResult(res: Response, result: YtDlpResult, sourceLabel?: string) {
+async function streamYtDlpResult(
+  res: Response,
+  result: YtDlpResult,
+  sourceLabel?: string,
+  savedPcPath?: string
+) {
   try {
     const stat = await fs.promises.stat(result.filePath);
     res.setHeader('Content-Type', result.mimeType);
     res.setHeader('Content-Length', String(stat.size));
     res.setHeader('X-Video-Title', encodeURIComponent(result.title));
     res.setHeader('X-Video-Source', sourceLabel || `ytdlp-${result.extractor}`);
+    if (savedPcPath) {
+      res.setHeader('X-Saved-Pc-Path', encodeURIComponent(savedPcPath));
+    }
     await pipeline(fs.createReadStream(result.filePath), res);
   } finally {
     await result.cleanup();
@@ -951,29 +992,224 @@ export interface StartServerOptions {
   host?: string;
   distDir?: string;
   binDir?: string;
+  mediaDir?: string;
+}
+
+function sanitizeDownloadFilename(rawTitle: string): string {
+  const cleaned = String(rawTitle || 'ShortStudio_Video')
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 90);
+  return cleaned || `ShortStudio_${Date.now()}`;
+}
+
+async function copyDownloadToPcFolder(
+  sourceFilePath: string,
+  rawTitle: string,
+  mimeType: string
+): Promise<string | undefined> {
+  if (!IS_WINDOWS) return undefined;
+  try {
+    const ext = mimeType.includes('webm')
+      ? '.webm'
+      : mimeType.includes('quicktime')
+      ? '.mov'
+      : '.mp4';
+    const baseDir = path.join(os.homedir(), 'Downloads', 'ShortStudio');
+    await fs.promises.mkdir(baseDir, { recursive: true });
+    const safeTitle = sanitizeDownloadFilename(rawTitle);
+    const hasExt = /\.(mp4|webm|mov|m4v)$/i.test(safeTitle);
+    let destPath = path.join(baseDir, hasExt ? safeTitle : `${safeTitle}${ext}`);
+    if (fs.existsSync(destPath)) {
+      const stem = hasExt ? safeTitle.replace(/\.[^/.]+$/, '') : safeTitle;
+      destPath = path.join(baseDir, `${stem}_${Date.now().toString().slice(-4)}${ext}`);
+    }
+    await fs.promises.copyFile(sourceFilePath, destPath);
+    return destPath;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function startServer(options: StartServerOptions = {}) {
   if (options.binDir) {
     activeBinDir = options.binDir;
   }
+  if (options.mediaDir) {
+    activeMediaDir = options.mediaDir;
+    fs.mkdirSync(activeMediaDir, { recursive: true });
+  }
+
+  void cleanupOrphanedTempFiles();
 
   const app = express();
-  app.use(express.json({ limit: '1mb' }));
+  app.use(express.json({ limit: '5mb' }));
 
   app.get('/api/health', (_req: Request, res: Response) => {
     res.json({
       ok: true,
       platform: process.platform,
+      desktopMediaEnabled: Boolean(activeMediaDir),
       developer: 'Kelly Benjamin De La Cruz',
     });
   });
 
+  // Persistent Desktop local media storage (supports >250 MB videos without IDB/RAM bloat)
+  const resolveLocalMediaPaths = (rawId: string) => {
+    if (!activeMediaDir || !/^[a-zA-Z0-9_-]{4,80}$/.test(rawId)) return null;
+    const root = path.resolve(activeMediaDir);
+    const binPath = path.resolve(root, `${rawId}.bin`);
+    const metaPath = path.resolve(root, `${rawId}.json`);
+    if (!binPath.startsWith(root + path.sep) || !metaPath.startsWith(root + path.sep)) {
+      return null;
+    }
+    return { binPath, metaPath };
+  };
+
+  app.post('/api/local-media/:mediaId', async (req: Request, res: Response) => {
+    const paths = resolveLocalMediaPaths(String(req.params.mediaId || ''));
+    if (!paths) {
+      res.status(404).json({ error: 'Almacenamiento local de escritorio no disponible.' });
+      return;
+    }
+    const tmpPath = `${paths.binPath}.part`;
+    try {
+      await pipeline(req, fs.createWriteStream(tmpPath));
+      if (fs.existsSync(paths.binPath)) {
+        await fs.promises.unlink(paths.binPath).catch(() => {});
+      }
+      await fs.promises.rename(tmpPath, paths.binPath);
+      const rawName = String(req.headers['x-media-name'] || '');
+      const name = rawName ? decodeURIComponent(rawName) : `${req.params.mediaId}.mp4`;
+      const mimeType = String(req.headers['content-type'] || 'video/mp4').split(';')[0];
+      await fs.promises.writeFile(
+        paths.metaPath,
+        JSON.stringify({ name, mimeType, createdAt: new Date().toISOString() }),
+        'utf8'
+      );
+      res.json({ ok: true });
+    } catch (err) {
+      await fs.promises.rm(tmpPath, { force: true }).catch(() => {});
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Error guardando video en disco.',
+      });
+    }
+  });
+
+  app.head('/api/local-media/:mediaId', async (req: Request, res: Response) => {
+    const paths = resolveLocalMediaPaths(String(req.params.mediaId || ''));
+    if (!paths || !fs.existsSync(paths.binPath)) {
+      res.status(404).end();
+      return;
+    }
+    try {
+      const stat = await fs.promises.stat(paths.binPath);
+      let mimeType = 'video/mp4';
+      let name = '';
+      if (fs.existsSync(paths.metaPath)) {
+        const meta = JSON.parse(await fs.promises.readFile(paths.metaPath, 'utf8')) as {
+          mimeType?: string;
+          name?: string;
+        };
+        if (meta.mimeType) mimeType = meta.mimeType;
+        if (meta.name) name = meta.name;
+      }
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Content-Length', String(stat.size));
+      res.setHeader('Accept-Ranges', 'bytes');
+      if (name) res.setHeader('X-Media-Name', encodeURIComponent(name));
+      res.status(200).end();
+    } catch {
+      res.status(404).end();
+    }
+  });
+
+  app.get('/api/local-media/:mediaId', async (req: Request, res: Response) => {
+    const paths = resolveLocalMediaPaths(String(req.params.mediaId || ''));
+    if (!paths || !fs.existsSync(paths.binPath)) {
+      res.status(404).json({ error: 'Video local no encontrado en disco.' });
+      return;
+    }
+    try {
+      const stat = await fs.promises.stat(paths.binPath);
+      let mimeType = 'video/mp4';
+      if (fs.existsSync(paths.metaPath)) {
+        const meta = JSON.parse(await fs.promises.readFile(paths.metaPath, 'utf8')) as {
+          mimeType?: string;
+        };
+        if (meta.mimeType) mimeType = meta.mimeType;
+      }
+
+      const range = req.headers.range;
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Content-Type', mimeType);
+
+      if (range) {
+        const match = range.match(/bytes=(\d*)-(\d*)/);
+        if (match) {
+          const start = match[1] ? parseInt(match[1], 10) : 0;
+          const end = match[2] ? Math.min(stat.size - 1, parseInt(match[2], 10)) : stat.size - 1;
+          if (start >= stat.size || end < start) {
+            res.status(416).setHeader('Content-Range', `bytes */${stat.size}`).end();
+            return;
+          }
+          res.status(206);
+          res.setHeader('Content-Range', `bytes ${start}-${end}/${stat.size}`);
+          res.setHeader('Content-Length', String(end - start + 1));
+          await pipeline(fs.createReadStream(paths.binPath, { start, end }), res).catch(() => {});
+          return;
+        }
+      }
+
+      res.setHeader('Content-Length', String(stat.size));
+      await pipeline(fs.createReadStream(paths.binPath), res).catch(() => {});
+    } catch {
+      if (!res.headersSent) res.status(500).end();
+    }
+  });
+
+  app.delete('/api/local-media/:mediaId', async (req: Request, res: Response) => {
+    const paths = resolveLocalMediaPaths(String(req.params.mediaId || ''));
+    if (!paths) {
+      res.status(404).json({ ok: false });
+      return;
+    }
+    await Promise.all([
+      fs.promises.rm(paths.binPath, { force: true }).catch(() => {}),
+      fs.promises.rm(paths.metaPath, { force: true }).catch(() => {}),
+      fs.promises.rm(`${paths.binPath}.part`, { force: true }).catch(() => {}),
+    ]);
+    res.json({ ok: true });
+  });
+
+  app.delete('/api/local-media', async (_req: Request, res: Response) => {
+    if (!activeMediaDir) {
+      res.json({ ok: false });
+      return;
+    }
+    try {
+      const entries = await fs.promises.readdir(activeMediaDir);
+      await Promise.all(
+        entries.map((name) =>
+          fs.promises.rm(path.join(activeMediaDir!, name), { recursive: true, force: true }).catch(() => {})
+        )
+      );
+      res.json({ ok: true });
+    } catch {
+      res.status(500).json({ ok: false });
+    }
+  });
+
   interface ImportUrlJob {
     id: string;
-    status: 'running' | 'ready' | 'blocked' | 'error';
+    status: 'running' | 'ready' | 'blocked' | 'error' | 'canceled';
     percent: number;
     label: string;
+    saveToPc: boolean;
+    savedPcPath?: string;
+    abortController: AbortController;
+    activeChild?: ChildProcess | null;
     result?: YtDlpResult;
     blocked?: {
       code: 'YOUTUBE_BOT_BLOCK';
@@ -1005,8 +1241,12 @@ export async function startServer(options: StartServerOptions = {}) {
   const runDirectDownloadToTemp = async (
     targetUrl: string,
     onProgress: (pct: number, label: string) => void,
+    control?: YtDlpControl,
     depth = 0
   ): Promise<{ ok: true; result: YtDlpResult } | { ok: false; error: string }> => {
+    if (control?.signal?.aborted) {
+      return { ok: false, error: 'Descarga cancelada por el usuario.' };
+    }
     if (depth > 2) {
       return { ok: false, error: 'No se encontró un archivo de video reproducible en esa URL.' };
     }
@@ -1019,13 +1259,21 @@ export async function startServer(options: StartServerOptions = {}) {
     const isLikelyDirectMedia = /\.(mp4|webm|mov|m4v)(\?.*)?$/i.test(parsed.pathname);
 
     if (!isLikelyDirectMedia) {
-      const ytDlpResult = await runYtDlpDownload(normalized, [], onProgress);
+      const ytDlpResult = await runYtDlpDownload(normalized, [], onProgress, control);
+      if (control?.signal?.aborted) {
+        if (ytDlpResult.ok) await ytDlpResult.cleanup();
+        return { ok: false, error: 'Descarga cancelada por el usuario.' };
+      }
       if (ytDlpResult.ok) {
         return { ok: true, result: ytDlpResult };
       }
     }
 
     onProgress(12, 'Conectando con servidor remoto...');
+    const timeoutSig = AbortSignal.timeout(45000);
+    const fetchSig = control?.signal
+      ? AbortSignal.any([control.signal, timeoutSig])
+      : timeoutSig;
     const upstream = await fetch(normalized, {
       redirect: 'follow',
       headers: {
@@ -1033,7 +1281,7 @@ export async function startServer(options: StartServerOptions = {}) {
         Accept: 'video/mp4,video/webm,video/*;q=0.9,*/*;q=0.8',
         Referer: parsed.origin,
       },
-      signal: AbortSignal.timeout(45000),
+      signal: fetchSig,
     });
 
     if (!upstream.ok || !upstream.body) {
@@ -1053,7 +1301,7 @@ export async function startServer(options: StartServerOptions = {}) {
         html.match(/<source[^>]+src=["']([^"']+)["']/i);
       if (ogMatch && ogMatch[1]) {
         const resolved = new URL(ogMatch[1], parsed.href).toString();
-        return runDirectDownloadToTemp(resolved, onProgress, depth + 1);
+        return runDirectDownloadToTemp(resolved, onProgress, control, depth + 1);
       }
       return {
         ok: false,
@@ -1084,6 +1332,9 @@ export async function startServer(options: StartServerOptions = {}) {
         (async () => {
           try {
             while (true) {
+              if (control?.signal?.aborted) {
+                throw new Error('Descarga cancelada por el usuario.');
+              }
               const { done, value } = await reader.read();
               if (done) break;
               if (value && value.byteLength > 0) {
@@ -1111,6 +1362,7 @@ export async function startServer(options: StartServerOptions = {}) {
             }
             out.end(resolve);
           } catch (err) {
+            reader.cancel().catch(() => {});
             out.destroy();
             reject(err);
           }
@@ -1144,7 +1396,7 @@ export async function startServer(options: StartServerOptions = {}) {
   };
 
   app.post('/api/import-url/start', (req: Request, res: Response) => {
-    const body = (req.body || {}) as { url?: string };
+    const body = (req.body || {}) as { url?: string; saveToPc?: boolean };
     const rawUrl = (body.url || '').trim();
     if (!rawUrl) {
       res.status(400).json({ error: 'Ingresa una URL válida.' });
@@ -1158,11 +1410,15 @@ export async function startServer(options: StartServerOptions = {}) {
     }
 
     const jobId = crypto.randomBytes(12).toString('hex');
+    const abortController = new AbortController();
     const job: ImportUrlJob = {
       id: jobId,
       status: 'running',
       percent: 2,
       label: 'Iniciando descarga...',
+      saveToPc: Boolean(body.saveToPc),
+      abortController,
+      activeChild: null,
     };
     importUrlJobs.set(jobId, job);
     scheduleImportJobCleanup(jobId);
@@ -1173,32 +1429,60 @@ export async function startServer(options: StartServerOptions = {}) {
       job.label = label;
     };
 
+    const dlControl: YtDlpControl = {
+      signal: abortController.signal,
+      onSpawn: (child) => {
+        job.activeChild = child;
+      },
+    };
+
+    const isJobCanceled = () => abortController.signal.aborted || (job.status as string) === 'canceled';
+
     (async () => {
       try {
         const ytId = extractYouTubeId(rawUrl);
         if (ytId) {
           const oembedPromise = fetchYouTubeOEmbed(ytId);
           let attempt = IS_WINDOWS
-            ? await runYtDlpDownload(rawUrl, ['-4'], updateJob)
+            ? await runYtDlpDownload(rawUrl, ['-4'], updateJob, dlControl)
             : await runYtDlpDownload(
                 rawUrl,
                 ['-4', '--extractor-args', 'youtube:player_client=tv_simply,android_vr,ios,web'],
-                updateJob
+                updateJob,
+                dlControl
               );
+
+          if (isJobCanceled()) {
+            if (attempt.ok) await attempt.cleanup();
+            return;
+          }
 
           if (!attempt.ok && IS_WINDOWS) {
             updateJob(10, 'Reintentando con cliente alternativo...');
             attempt = await runYtDlpDownload(
               rawUrl,
               ['-4', '--extractor-args', 'youtube:player_client=tv_simply,android_vr,ios,web'],
-              updateJob
+              updateJob,
+              dlControl
             );
+          }
+
+          if (isJobCanceled()) {
+            if (attempt.ok) await attempt.cleanup();
+            return;
           }
 
           const oembed = await oembedPromise;
           if (attempt.ok) {
             if (!attempt.title || attempt.title.startsWith('Video_')) {
               attempt.title = oembed.title;
+            }
+            if (job.saveToPc) {
+              job.savedPcPath = await copyDownloadToPcFolder(
+                attempt.filePath,
+                attempt.title,
+                attempt.mimeType
+              );
             }
             job.result = attempt;
             job.percent = 96;
@@ -1221,8 +1505,19 @@ export async function startServer(options: StartServerOptions = {}) {
           return;
         }
 
-        const direct = await runDirectDownloadToTemp(rawUrl, updateJob);
+        const direct = await runDirectDownloadToTemp(rawUrl, updateJob, dlControl);
+        if (isJobCanceled()) {
+          if (direct.ok) await direct.result.cleanup();
+          return;
+        }
         if (direct.ok) {
+          if (job.saveToPc) {
+            job.savedPcPath = await copyDownloadToPcFolder(
+              direct.result.filePath,
+              direct.result.title,
+              direct.result.mimeType
+            );
+          }
           job.result = direct.result;
           job.percent = 96;
           job.label = 'Descarga completada, cargando en el editor...';
@@ -1232,6 +1527,7 @@ export async function startServer(options: StartServerOptions = {}) {
           job.error = direct.error;
         }
       } catch (err) {
+        if (job.status === 'canceled' || abortController.signal.aborted) return;
         job.status = 'error';
         job.error =
           err instanceof Error
@@ -1241,6 +1537,31 @@ export async function startServer(options: StartServerOptions = {}) {
     })();
 
     res.json({ jobId });
+  });
+
+  app.post('/api/import-url/:jobId/cancel', (req: Request, res: Response) => {
+    const jobId = String(req.params.jobId || '');
+    const job = importUrlJobs.get(jobId);
+    if (!job) {
+      res.status(404).json({ ok: false });
+      return;
+    }
+    job.status = 'canceled';
+    job.label = 'Descarga cancelada';
+    job.abortController.abort();
+    if (job.activeChild) {
+      try {
+        job.activeChild.kill('SIGTERM');
+      } catch {
+        // ignore
+      }
+      job.activeChild = null;
+    }
+    if (job.result) {
+      void job.result.cleanup();
+      job.result = undefined;
+    }
+    res.json({ ok: true });
   });
 
   app.get('/api/import-url/:jobId/status', (req: Request, res: Response) => {
@@ -1253,6 +1574,7 @@ export async function startServer(options: StartServerOptions = {}) {
       status: job.status,
       percent: job.percent,
       label: job.label,
+      savedPcPath: job.savedPcPath,
       blocked: job.blocked,
       error: job.error,
     });
@@ -1266,8 +1588,9 @@ export async function startServer(options: StartServerOptions = {}) {
       return;
     }
     const result = job.result;
+    const savedPcPath = job.savedPcPath;
     importUrlJobs.delete(jobId);
-    await streamYtDlpResult(res, result, `ytdlp-${result.extractor}`);
+    await streamYtDlpResult(res, result, `ytdlp-${result.extractor}`, savedPcPath);
   });
 
   app.post('/api/import-url', async (req: Request, res: Response) => {
@@ -1511,6 +1834,302 @@ export async function startServer(options: StartServerOptions = {}) {
             err instanceof Error
               ? `Error convirtiendo a MP4 universal: ${err.message}`
               : 'No se pudo convertir el video a MP4.',
+        });
+      }
+    } finally {
+      await cleanupJobDir(jobDir);
+    }
+  });
+
+  app.post('/api/media-job/:jobId/extract-pcm', async (req: Request, res: Response) => {
+    const jobDir = resolveSafeJobDir(String(req.params.jobId || ''));
+    if (!jobDir) {
+      res.status(404).json({ error: 'Sesión de audio inválida o expirada.' });
+      return;
+    }
+
+    const inPath = path.resolve(jobDir, 'video.bin');
+    const pcmPath = path.resolve(jobDir, 'audio16k.pcm');
+
+    try {
+      if (!fs.existsSync(inPath)) {
+        res.status(400).json({ error: 'No se recibió archivo de video.' });
+        return;
+      }
+
+      const body = (req.body || {}) as { start?: number; end?: number };
+      const ffmpegBin = await ensureFfmpeg();
+      const args: string[] = ['-y'];
+
+      if (typeof body.start === 'number' && Number.isFinite(body.start) && body.start > 0) {
+        args.push('-ss', String(body.start));
+      }
+      if (
+        typeof body.end === 'number' &&
+        Number.isFinite(body.end) &&
+        body.end > (body.start || 0)
+      ) {
+        args.push('-t', String(body.end - (body.start || 0)));
+      }
+
+      args.push('-i', inPath, '-vn', '-ac', '1', '-ar', '16000', '-f', 'f32le', pcmPath);
+      await execFileAsync(ffmpegBin, args, { timeout: 120_000 });
+
+      const stat = await fs.promises.stat(pcmPath);
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Length', String(stat.size));
+      await pipeline(fs.createReadStream(pcmPath), res);
+    } catch (err) {
+      if (!res.headersSent) {
+        res.status(500).json({
+          error:
+            err instanceof Error
+              ? `Error extrayendo audio PCM: ${err.message}`
+              : 'No se pudo extraer la pista de audio.',
+        });
+      }
+    } finally {
+      await cleanupJobDir(jobDir);
+    }
+  });
+
+  app.post('/api/media-job/:jobId/export-ffmpeg', async (req: Request, res: Response) => {
+    const jobDir = resolveSafeJobDir(String(req.params.jobId || ''));
+    if (!jobDir) {
+      res.status(404).json({ error: 'Sesión de exportación inválida o expirada.' });
+      return;
+    }
+
+    const videoPath = path.resolve(jobDir, 'video.bin');
+    const bgmPath = path.resolve(jobDir, 'audio.bin');
+    const subsPath = path.resolve(jobDir, 'subs.ass');
+    const outPath = path.resolve(jobDir, 'out.mp4');
+
+    try {
+      if (!fs.existsSync(videoPath)) {
+        res.status(400).json({ error: 'Falta el video fuente para exportar.' });
+        return;
+      }
+
+      const body = (req.body || {}) as {
+        settings?: Partial<AssBuilderSettings> & {
+          ratio?: '9:16' | '1:1' | '16:9';
+          fitMode?: 'cover' | 'blur' | 'fit';
+          zoom?: number;
+          bright?: number;
+          contrast?: number;
+          sat?: number;
+          volVideo?: number;
+          volBgm?: number;
+          progressBar?: boolean;
+          progressPos?: 'top' | 'bottom';
+          progressColor?: string;
+        };
+        subtitles?: AssSubtitleCue[];
+      };
+
+      const s = body.settings || {};
+      const ratio = s.ratio || '9:16';
+      const W = ratio === '1:1' ? 1080 : ratio === '16:9' ? 1920 : 1080;
+      const H = ratio === '9:16' ? 1920 : 1080;
+      const trimStart = Math.max(0, Number(s.trimStart || 0));
+      const trimEnd = Math.max(trimStart + 0.1, Number(s.trimEnd || trimStart + 10));
+      const speed = Math.max(0.25, Math.min(4, Number(s.speed || 1)));
+      const srcDur = Math.max(0.1, trimEnd - trimStart);
+      const outDur = srcDur / speed;
+      const fitMode = s.fitMode || 'cover';
+      const volVideo = Math.max(0, Math.min(200, Number(s.volVideo ?? 100)));
+      const volBgm = Math.max(0, Math.min(200, Number(s.volBgm ?? 35)));
+      const hasBgmFile = fs.existsSync(bgmPath) && fs.statSync(bgmPath).size > 0 && volBgm > 0;
+
+      const ffmpegBin = await ensureFfmpeg();
+
+      // Quick probe to see if source video contains an audio stream
+      const hasVideoAudio = await new Promise<boolean>((resolve) => {
+        execFile(ffmpegBin, ['-i', 'video.bin'], { cwd: jobDir, timeout: 10_000 }, (_err, _so, se) => {
+          resolve(/Stream\s+#0:\d+.*Audio:/i.test(se || ''));
+        });
+      });
+
+      const cues = Array.isArray(body.subtitles) ? body.subtitles : [];
+      const hasSubs = cues.length > 0;
+      if (hasSubs) {
+        const assContent = buildAssSubtitles(cues, {
+          width: W,
+          height: H,
+          trimStart,
+          trimEnd,
+          speed,
+          subUpper: Boolean(s.subUpper ?? true),
+          subSize: Number(s.subSize ?? 68),
+          subY: Number(s.subY ?? 68),
+          subStroke: Number(s.subStroke ?? 13),
+          subShadow: Number(s.subShadow ?? 18),
+          subColor: String(s.subColor || '#ffffff'),
+          subHighlight: String(s.subHighlight || '#facc15'),
+          subStrokeColor: String(s.subStrokeColor || '#000000'),
+          subBgColor: String(s.subBgColor || '#0f172a'),
+          subBgMode: s.subBgMode || 'none',
+        });
+        await fs.promises.writeFile(subsPath, assContent, 'utf8');
+      }
+
+      const filters: string[] = [];
+      let vChain = `[0:v]trim=start=${trimStart.toFixed(3)}:end=${trimEnd.toFixed(3)},setpts=PTS-STARTPTS`;
+      if (Math.abs(speed - 1) > 0.005) {
+        vChain += `,setpts=PTS/${speed.toFixed(4)}`;
+      }
+      filters.push(`${vChain}[vtrim]`);
+
+      if (fitMode === 'fit') {
+        filters.push(
+          `[vtrim]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black[vframe]`
+        );
+      } else if (fitMode === 'blur') {
+        filters.push('[vtrim]split=2[vbg][vfg]');
+        filters.push(
+          `[vbg]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},boxblur=20:5[vbgb]`
+        );
+        filters.push(`[vfg]scale=${W}:${H}:force_original_aspect_ratio=decrease[vfgs]`);
+        filters.push('[vbgb][vfgs]overlay=(W-w)/2:(H-h)/2[vframe]');
+      } else {
+        const zoomFactor = Math.max(1, Math.min(2.5, Number(s.zoom || 100) / 100));
+        if (zoomFactor > 1.02) {
+          const zW = Math.round(W * zoomFactor);
+          const zH = Math.round(H * zoomFactor);
+          filters.push(
+            `[vtrim]scale=${zW}:${zH}:force_original_aspect_ratio=increase,crop=${W}:${H}:(iw-${W})/2:(ih-${H})/2[vframe]`
+          );
+        } else {
+          filters.push(
+            `[vtrim]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}[vframe]`
+          );
+        }
+      }
+
+      let curVLabel = 'vframe';
+      const bright = Number(s.bright ?? 100);
+      const contrast = Number(s.contrast ?? 100);
+      const sat = Number(s.sat ?? 100);
+      if (bright !== 100 || contrast !== 100 || sat !== 100) {
+        const eqB = ((bright - 100) / 200).toFixed(3);
+        const eqC = Math.max(0.2, contrast / 100).toFixed(3);
+        const eqS = Math.max(0, sat / 100).toFixed(3);
+        filters.push(`[${curVLabel}]eq=brightness=${eqB}:contrast=${eqC}:saturation=${eqS}[veq]`);
+        curVLabel = 'veq';
+      }
+
+      if (hasSubs) {
+        filters.push(`[${curVLabel}]ass=subs.ass[vsub]`);
+        curVLabel = 'vsub';
+      }
+
+      if (s.progressBar) {
+        const cleanHex = String(s.progressColor || '#f43f5e')
+          .replace('#', '')
+          .replace(/[^a-fA-F0-9]/g, '')
+          .padEnd(6, '0')
+          .slice(0, 6);
+        const barY = s.progressPos === 'bottom' ? H - 8 : 0;
+        filters.push(`[${curVLabel}]setsar=1[vmain]`);
+        filters.push(`color=c=0x${cleanHex}:s=${W}x8:r=30:d=${outDur.toFixed(3)}[pbar]`);
+        filters.push(
+          `[vmain][pbar]overlay=x='-W+(t/${outDur.toFixed(3)})*W':y=${barY}:shortest=1,format=yuv420p[vout]`
+        );
+      } else {
+        filters.push(`[${curVLabel}]setsar=1,format=yuv420p[vout]`);
+      }
+
+      // Build valid atempo chain for arbitrary 0.25..4.0 speed
+      const buildAtempoFilters = (spd: number): string[] => {
+        const parts: string[] = [];
+        let rem = spd;
+        while (rem > 2.0) {
+          parts.push('atempo=2.0');
+          rem /= 2.0;
+        }
+        while (rem < 0.5) {
+          parts.push('atempo=0.5');
+          rem /= 0.5;
+        }
+        if (Math.abs(rem - 1) > 0.005) {
+          parts.push(`atempo=${rem.toFixed(4)}`);
+        }
+        return parts;
+      };
+
+      const useVideoAudio = hasVideoAudio && volVideo > 0;
+      if (useVideoAudio) {
+        const tempoChain = buildAtempoFilters(speed);
+        const aOps = [
+          `atrim=start=${trimStart.toFixed(3)}:end=${trimEnd.toFixed(3)}`,
+          'asetpts=PTS-STARTPTS',
+          ...tempoChain,
+          `volume=${(volVideo / 100).toFixed(2)}`,
+        ];
+        filters.push(`[0:a]${aOps.join(',')}[va]`);
+      }
+
+      if (hasBgmFile) {
+        filters.push(
+          `[1:a]aloop=loop=-1:size=2000000000,atrim=0:${outDur.toFixed(3)},asetpts=PTS-STARTPTS,volume=${(volBgm / 100).toFixed(2)}[ba]`
+        );
+      }
+
+      if (useVideoAudio && hasBgmFile) {
+        filters.push('[va][ba]amix=inputs=2:duration=shortest:normalize=0[aout]');
+      } else if (useVideoAudio) {
+        filters.push('[va]aresample=async=1:first_pts=0[aout]');
+      } else if (hasBgmFile) {
+        filters.push('[ba]aresample=async=1:first_pts=0[aout]');
+      } else {
+        filters.push(`anullsrc=r=48000:cl=stereo:d=${outDur.toFixed(3)}[aout]`);
+      }
+
+      const ffmpegArgs: string[] = ['-y', '-i', 'video.bin'];
+      if (hasBgmFile) {
+        ffmpegArgs.push('-i', 'audio.bin');
+      }
+      ffmpegArgs.push(
+        '-filter_complex',
+        filters.join(';'),
+        '-map',
+        '[vout]',
+        '-map',
+        '[aout]',
+        '-r',
+        '30',
+        '-vsync',
+        'cfr',
+        '-c:v',
+        'libx264',
+        '-preset',
+        'veryfast',
+        '-crf',
+        '20',
+        '-c:a',
+        'aac',
+        '-b:a',
+        '192k',
+        '-shortest',
+        '-movflags',
+        '+faststart',
+        'out.mp4'
+      );
+
+      await execFileAsync(ffmpegBin, ffmpegArgs, { cwd: jobDir, timeout: 240_000 });
+
+      const stat = await fs.promises.stat(outPath);
+      res.setHeader('Content-Type', 'video/mp4');
+      res.setHeader('Content-Length', String(stat.size));
+      await pipeline(fs.createReadStream(outPath), res);
+    } catch (err) {
+      if (!res.headersSent) {
+        res.status(500).json({
+          error:
+            err instanceof Error
+              ? `Error en renderizado FFmpeg rápido: ${err.message}`
+              : 'No se pudo completar el renderizado FFmpeg.',
         });
       }
     } finally {

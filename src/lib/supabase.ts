@@ -62,6 +62,41 @@ export function translateSupabaseError(message: string): string {
   return message;
 }
 
+export type CloudSyncStatus = 'idle' | 'syncing' | 'synced' | 'tables-missing' | 'error' | 'offline';
+
+export async function checkCloudSyncHealth(
+  userId: string
+): Promise<{ status: CloudSyncStatus; detail?: string }> {
+  if (!supabase) return { status: 'offline', detail: 'Supabase no configurado.' };
+  try {
+    const { error } = await supabase
+      .from('shortstudio_projects')
+      .select('id', { head: true, count: 'exact' })
+      .eq('user_id', userId);
+    if (error) {
+      const msg = (error.message || '').toLowerCase();
+      if (
+        error.code === '42P01' ||
+        error.code === 'PGRST205' ||
+        msg.includes('does not exist') ||
+        msg.includes('could not find the table')
+      ) {
+        return {
+          status: 'tables-missing',
+          detail: 'Ejecuta supabase/schema.sql en el SQL Editor de tu proyecto Supabase para activar la sincronización.',
+        };
+      }
+      return { status: 'error', detail: error.message };
+    }
+    return { status: 'synced' };
+  } catch (err) {
+    return {
+      status: 'error',
+      detail: err instanceof Error ? err.message : 'Sin conexión con Supabase.',
+    };
+  }
+}
+
 export async function fetchCloudProjects(userId: string): Promise<ClipProject[]> {
   if (!supabase) return [];
   try {

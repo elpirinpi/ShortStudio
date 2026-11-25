@@ -216,7 +216,7 @@ async function seekVideoExact(
   maxTime: number
 ): Promise<void> {
   const clamped = Math.max(0, Math.min(maxTime, targetTime));
-  if (Math.abs(video.currentTime - clamped) < 0.0005 && video.readyState >= 2) {
+  if (Math.abs(video.currentTime - clamped) < 0.004 && video.readyState >= 2) {
     return;
   }
 
@@ -286,6 +286,83 @@ async function muxVideoAndWavOnServer(videoBuf: ArrayBuffer, wavBuf: ArrayBuffer
   const muxRes = await fetch(`/api/media-job/${jobId}/mux`, { method: 'POST' });
   if (!muxRes.ok) throw new Error(`HTTP ${muxRes.status}`);
   return muxRes.blob();
+}
+
+export async function exportClipWithFfmpeg(
+  params: OfflineExportParams & { bgmBlob?: Blob | null }
+): Promise<OfflineExportResult> {
+  const { source, isDemo, bgmBlob, hasBgm, settings, subtitles, signal, onProgress } = params;
+
+  if (isDemo || !source) {
+    return { ok: false, canceled: false, fallbackNeeded: true, reason: 'Sin video fuente' };
+  }
+
+  try {
+    onProgress(6, 'Preparando archivo para renderizado FFmpeg nativo...');
+    let videoBlob: Blob;
+    if (source instanceof Blob) {
+      videoBlob = source;
+    } else {
+      const resp = await fetch(source);
+      if (!resp.ok) {
+        return { ok: false, canceled: false, fallbackNeeded: true };
+      }
+      videoBlob = await resp.blob();
+    }
+
+    if (signal.canceled) {
+      return { ok: false, canceled: true, fallbackNeeded: false };
+    }
+
+    const initRes = await fetch('/api/media-job/init', { method: 'POST' });
+    if (!initRes.ok) {
+      return { ok: false, canceled: false, fallbackNeeded: true };
+    }
+    const { jobId } = (await initRes.json()) as { jobId: string };
+
+    onProgress(20, 'Enviando pista de video al motor FFmpeg...');
+    await uploadBlobInChunks(videoBlob, 'video', jobId);
+
+    if (signal.canceled) {
+      return { ok: false, canceled: true, fallbackNeeded: false };
+    }
+
+    if (hasBgm && bgmBlob && bgmBlob.size > 0 && settings.volBgm > 0) {
+      onProgress(40, 'Enviando música de fondo...');
+      await uploadBlobInChunks(bgmBlob, 'audio', jobId);
+    }
+
+    if (signal.canceled) {
+      return { ok: false, canceled: true, fallbackNeeded: false };
+    }
+
+    onProgress(58, 'Renderizando video 30fps, encuadre y subtítulos con FFmpeg...');
+    const res = await fetch(`/api/media-job/${jobId}/export-ffmpeg`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ settings, subtitles }),
+    });
+
+    if (!res.ok) {
+      return { ok: false, canceled: false, fallbackNeeded: true };
+    }
+
+    const blob = await res.blob();
+    if (signal.canceled) {
+      return { ok: false, canceled: true, fallbackNeeded: false };
+    }
+    if (blob.size === 0) {
+      return { ok: false, canceled: false, fallbackNeeded: true };
+    }
+
+    onProgress(100, '¡MP4 ultra-rápido listo!');
+    return { ok: true, blob, usedServerMux: true };
+  } catch {
+    if (signal.canceled) {
+      return { ok: false, canceled: true, fallbackNeeded: false };
+    }
+    return { ok: false, canceled: false, fallbackNeeded: true };
+  }
 }
 
 export async function exportClipOffline(

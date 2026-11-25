@@ -1,5 +1,19 @@
 import { useEffect, useState } from 'react';
-import { Code2, Download, ExternalLink, HardDrive, LoaderCircle, LogOut, RefreshCw, Trash2, User } from 'lucide-react';
+import {
+  Check,
+  Cloud,
+  Code2,
+  Copy,
+  Download,
+  ExternalLink,
+  HardDrive,
+  LoaderCircle,
+  LogOut,
+  RefreshCw,
+  Trash2,
+  User,
+} from 'lucide-react';
+import { CloudSyncStatus } from '../lib/supabase';
 import { DesktopUpdateState } from '../types/desktop';
 import {
   AiEngineMode,
@@ -11,10 +25,38 @@ import {
 } from '../types/editor';
 import { getStorageEstimate } from '../utils/db';
 
+const SUPABASE_SCHEMA_SQL = `CREATE TABLE IF NOT EXISTS public.shortstudio_projects (
+  id TEXT NOT NULL,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  data JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, id)
+);
+CREATE TABLE IF NOT EXISTS public.shortstudio_scheduled_posts (
+  id TEXT NOT NULL,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  data JSONB NOT NULL,
+  scheduled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, id)
+);
+CREATE TABLE IF NOT EXISTS public.shortstudio_settings (
+  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  data JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE public.shortstudio_projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shortstudio_scheduled_posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shortstudio_settings ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "shortstudio_projects_owner" ON public.shortstudio_projects FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "shortstudio_posts_owner" ON public.shortstudio_scheduled_posts FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "shortstudio_settings_owner" ON public.shortstudio_settings FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);`;
+
 interface SettingsPageProps {
   settings: AppSettings;
   projectsCount: number;
   userEmail?: string | null;
+  cloudSyncStatus?: CloudSyncStatus;
+  cloudSyncDetail?: string;
   onSignOut?: () => void;
   desktopUpdateState?: DesktopUpdateState | null;
   onCheckForUpdates?: () => void;
@@ -29,6 +71,8 @@ export function SettingsPage({
   settings,
   projectsCount,
   userEmail,
+  cloudSyncStatus = 'idle',
+  cloudSyncDetail,
   onSignOut,
   desktopUpdateState,
   onCheckForUpdates,
@@ -40,10 +84,22 @@ export function SettingsPage({
 }: SettingsPageProps) {
   const [storage, setStorage] = useState<{ usedMB: number; quotaMB: number } | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
+  const isDesktopApp = Boolean(window.shortStudioDesktop?.isDesktop);
 
   useEffect(() => {
     getStorageEstimate().then(setStorage);
   }, [projectsCount]);
+
+  const handleCopySql = async () => {
+    try {
+      await navigator.clipboard.writeText(SUPABASE_SCHEMA_SQL);
+      setCopiedSql(true);
+      window.setTimeout(() => setCopiedSql(false), 2200);
+    } catch {
+      // ignore clipboard restrictions
+    }
+  };
 
   const update = <K extends keyof AppSettings>(key: K, val: AppSettings[K]) => {
     onUpdateSettings({ ...settings, [key]: val });
@@ -165,10 +221,16 @@ export function SettingsPage({
           <div className="flex items-start gap-3">
             <HardDrive className="w-5 h-5 text-slate-400 mt-0.5" />
             <div className="space-y-1">
-              <h2 className="text-sm font-semibold text-slate-100">Almacenamiento Local (IndexedDB)</h2>
+              <h2 className="text-sm font-semibold text-slate-100">
+                {isDesktopApp ? 'Almacenamiento en Disco PC + IndexedDB' : 'Almacenamiento Local (IndexedDB)'}
+              </h2>
               <p className="text-xs font-mono-tabular text-slate-400">
                 {projectsCount} proyectos guardados
-                {storage ? ` · ${storage.usedMB} MB usados de ${storage.quotaMB} MB disponibles` : ''}
+                {isDesktopApp
+                  ? ' · Videos >250 MB guardados directo en disco local'
+                  : storage
+                  ? ` · ${storage.usedMB} MB usados de ${storage.quotaMB} MB disponibles`
+                  : ''}
               </p>
             </div>
           </div>
@@ -210,23 +272,62 @@ export function SettingsPage({
           <div className="flex items-start gap-3">
             <User className="w-5 h-5 text-indigo-400 mt-0.5" />
             <div className="space-y-1">
-              <h2 className="text-sm font-semibold text-slate-100">Cuenta de Supabase</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-sm font-semibold text-slate-100">Cuenta y Nube Supabase</h2>
+                <span
+                  className={`inline-flex items-center gap-1 text-[11px] font-medium ${
+                    cloudSyncStatus === 'synced'
+                      ? 'text-emerald-400'
+                      : cloudSyncStatus === 'tables-missing'
+                      ? 'text-amber-300'
+                      : 'text-slate-400'
+                  }`}
+                >
+                  <Cloud className="w-3 h-3" />
+                  <span>
+                    {cloudSyncStatus === 'synced'
+                      ? 'Nube sincronizada'
+                      : cloudSyncStatus === 'tables-missing'
+                      ? 'Solo almacenamiento local (faltan tablas SQL)'
+                      : cloudSyncStatus === 'syncing'
+                      ? 'Sincronizando...'
+                      : 'Modo local activo'}
+                  </span>
+                </span>
+              </div>
               <p className="text-xs text-slate-400">
                 {userEmail
                   ? `Sesión iniciada como ${userEmail}`
                   : 'Sesión de Supabase activa'}
               </p>
+              {cloudSyncDetail && cloudSyncStatus === 'tables-missing' && (
+                <p className="text-[11px] text-amber-200/80 max-w-lg leading-relaxed">
+                  {cloudSyncDetail}
+                </p>
+              )}
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onSignOut}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] cursor-pointer"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            <span>Cerrar Sesión</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {cloudSyncStatus === 'tables-missing' && (
+              <button
+                type="button"
+                onClick={handleCopySql}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-amber-200 bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 cursor-pointer"
+              >
+                {copiedSql ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedSql ? 'SQL Copiado' : 'Copiar SQL Supabase'}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] cursor-pointer"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Cerrar Sesión</span>
+            </button>
+          </div>
         </section>
 
         <section className="bg-[#12151c] border border-slate-800/90 rounded-xl p-5 flex flex-wrap items-center justify-between gap-4">

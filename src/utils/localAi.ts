@@ -85,7 +85,45 @@ export async function extractVideoMetadataAndThumbnail(
   }
 }
 
+async function extractMonoAudioViaBackend(blob: Blob): Promise<Float32Array | null> {
+  try {
+    const initRes = await fetch('/api/media-job/init', { method: 'POST' });
+    if (!initRes.ok) return null;
+    const { jobId } = (await initRes.json()) as { jobId?: string };
+    if (!jobId) return null;
+
+    const chunkBytes = 12 * 1024 * 1024;
+    for (let offset = 0; offset < blob.size; offset += chunkBytes) {
+      const chunk = blob.slice(offset, Math.min(blob.size, offset + chunkBytes));
+      const upRes = await fetch(`/api/media-job/${jobId}/append?part=video`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: chunk,
+      });
+      if (!upRes.ok) return null;
+    }
+
+    const pcmRes = await fetch(`/api/media-job/${jobId}/extract-pcm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    if (!pcmRes.ok) return null;
+    const pcmBuf = await pcmRes.arrayBuffer();
+    if (pcmBuf.byteLength < 4) return null;
+    return new Float32Array(pcmBuf);
+  } catch {
+    return null;
+  }
+}
+
 export async function extractMonoAudio16k(blob: Blob): Promise<Float32Array | null> {
+  // For large videos (>75 MB), extract 16kHz mono PCM via FFmpeg backend to avoid huge browser RAM allocations
+  if (blob.size > 75 * 1024 * 1024) {
+    const streamed = await extractMonoAudioViaBackend(blob);
+    if (streamed) return streamed;
+  }
+
   try {
     const arrayBuffer = await blob.arrayBuffer();
     const AudioCtx =
@@ -110,7 +148,7 @@ export async function extractMonoAudio16k(blob: Blob): Promise<Float32Array | nu
     const rendered = await offline.startRendering();
     return rendered.getChannelData(0);
   } catch {
-    return null;
+    return await extractMonoAudioViaBackend(blob);
   }
 }
 

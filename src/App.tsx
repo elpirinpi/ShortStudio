@@ -14,6 +14,8 @@ import { UpdateBanner } from './components/UpdateBanner';
 import { YouTubeImportModal } from './components/YouTubeImportModal';
 import { DesktopUpdateState } from './types/desktop';
 import {
+  CloudSyncStatus,
+  checkCloudSyncHealth,
   deleteCloudProject,
   deleteCloudScheduledPost,
   fetchCloudAppSettings,
@@ -94,6 +96,8 @@ export default function App() {
   const [activeClipId, setActiveClipId] = useState<string | null>(null);
   const [activeMediaUrl, setActiveMediaUrl] = useState<string | null>(null);
   const activeMediaUrlRef = useRef<string | null>(null);
+  const activeMediaIsObjectUrlRef = useRef<boolean>(false);
+  const [mediaRefreshTick, setMediaRefreshTick] = useState(0);
 
   const [stagedMedia, setStagedMedia] = useState<StagedMediaInfo | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -117,6 +121,9 @@ export default function App() {
   const [connectorModalError, setConnectorModalError] = useState('');
   const [urlStatusText, setUrlStatusText] = useState('');
   const [urlProgressPercent, setUrlProgressPercent] = useState(0);
+  const activeImportJobIdRef = useRef<string | null>(null);
+  const importAbortRef = useRef<AbortController | null>(null);
+  const importCanceledRef = useRef<boolean>(false);
   const quickFileInputRef = useRef<HTMLInputElement | null>(null);
   const [schedulerTarget, setSchedulerTarget] = useState<{
     projectId: string;
@@ -134,6 +141,10 @@ export default function App() {
 
   const [authSession, setAuthSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(isSupabaseConfigured);
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<CloudSyncStatus>(
+    isSupabaseConfigured ? 'idle' : 'offline'
+  );
+  const [cloudSyncDetail, setCloudSyncDetail] = useState<string>('');
   const [desktopUpdateState, setDesktopUpdateState] = useState<DesktopUpdateState | null>(null);
 
   const notify = useCallback((msg: string) => {
@@ -259,19 +270,26 @@ export default function App() {
     };
   }, []);
 
-  // Optional Supabase cloud metadata sync when authenticated
+  // Optional Supabase cloud metadata sync + health check when authenticated
   useEffect(() => {
     const userId = authSession?.user?.id;
-    if (!userId || !isSupabaseConfigured) return;
+    if (!userId || !isSupabaseConfigured) {
+      setCloudSyncStatus(isSupabaseConfigured ? 'idle' : 'offline');
+      return;
+    }
 
     let canceled = false;
+    setCloudSyncStatus('syncing');
     Promise.all([
+      checkCloudSyncHealth(userId),
       fetchCloudProjects(userId),
       fetchCloudScheduledPosts(userId),
       fetchCloudAppSettings(userId),
     ])
-      .then(([cloudProjects, cloudPosts, cloudSettings]) => {
+      .then(([health, cloudProjects, cloudPosts, cloudSettings]) => {
         if (canceled) return;
+        setCloudSyncStatus(health.status);
+        setCloudSyncDetail(health.detail || '');
 
         if (cloudProjects.length > 0) {
           setProjects((prev) => {
@@ -317,7 +335,10 @@ export default function App() {
         }
       })
       .catch(() => {
-        // Keep IndexedDB state silently
+        if (!canceled) {
+          setCloudSyncStatus('error');
+          setCloudSyncDetail('No se pudo conectar con Supabase');
+        }
       });
 
     return () => {
@@ -352,15 +373,16 @@ export default function App() {
     [projects, activeProjectId]
   );
 
-  // Hydrate Object URL for active project's media blob
+  // Hydrate playback URL for active project's media (ObjectURL on Web, HTTP Range URL on Desktop)
   useEffect(() => {
     let canceled = false;
 
     const cleanupUrl = () => {
-      if (activeMediaUrlRef.current) {
+      if (activeMediaUrlRef.current && activeMediaIsObjectUrlRef.current) {
         URL.revokeObjectURL(activeMediaUrlRef.current);
-        activeMediaUrlRef.current = null;
       }
+      activeMediaUrlRef.current = null;
+      activeMediaIsObjectUrlRef.current = false;
     };
 
     const blobId = activeProject?.mediaBlobId;
@@ -374,9 +396,14 @@ export default function App() {
       .then((record) => {
         if (canceled) return;
         cleanupUrl();
-        if (record?.blob) {
+        if (record?.url) {
+          activeMediaUrlRef.current = record.url;
+          activeMediaIsObjectUrlRef.current = false;
+          setActiveMediaUrl(record.url);
+        } else if (record?.blob) {
           const url = URL.createObjectURL(record.blob);
           activeMediaUrlRef.current = url;
+          activeMediaIsObjectUrlRef.current = true;
           setActiveMediaUrl(url);
         } else {
           setActiveMediaUrl(null);
@@ -389,14 +416,15 @@ export default function App() {
     return () => {
       canceled = true;
     };
-  }, [activeProject?.id, activeProject?.mediaBlobId, activeProject?.isDemo]);
+  }, [activeProject?.id, activeProject?.mediaBlobId, activeProject?.isDemo, mediaRefreshTick]);
 
   useEffect(() => {
     return () => {
-      if (activeMediaUrlRef.current) {
+      if (activeMediaUrlRef.current && activeMediaIsObjectUrlRef.current) {
         URL.revokeObjectURL(activeMediaUrlRef.current);
-        activeMediaUrlRef.current = null;
       }
+      activeMediaUrlRef.current = null;
+      activeMediaIsObjectUrlRef.current = false;
     };
   }, []);
 
@@ -444,7 +472,7 @@ export default function App() {
   const importVideoViaBackend = useCallback(
     async (
       url: string
-    ): Promise<{ ok: boolean; blocked?: YouTubeBlockedInfo; error?: string }> => {
+    ): Promise<{ ok: boolean; canceled?: boolean; blocked?: YouTubeBlockedInfo; error?: string }> => {
       let maxPercent = 3;
       const pushProgress = (pct: number, label?: string) => {
         maxPercent = Math.max(maxPercent, Math.min(100, Math.round(pct)));
@@ -452,148 +480,207 @@ export default function App() {
         if (label) setUrlStatusText(label);
       };
 
-      const startRes = await fetch('/api/import-url/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
-      });
+      const controller = new AbortController();
+      importAbortRef.current = controller;
+      importCanceledRef.current = false;
+      activeImportJobIdRef.current = null;
 
-      if (!startRes.ok) {
-        const errData = (await startRes.json().catch(() => ({}))) as { error?: string };
-        return {
-          ok: false,
-          error: errData.error || `El servidor respondió con estado ${startRes.status}.`,
-        };
-      }
-
-      const { jobId } = (await startRes.json().catch(() => ({}))) as { jobId?: string };
-      if (!jobId) {
-        return { ok: false, error: 'El servidor no devolvió un identificador de descarga.' };
-      }
-
-      // Poll live download progress from yt-dlp / FFmpeg / direct stream
-      let transientErrors = 0;
-      while (true) {
-        await new Promise((r) => setTimeout(r, 350));
-        const stRes = await fetch(`/api/import-url/${encodeURIComponent(jobId)}/status`, {
-          cache: 'no-store',
+      try {
+        const startRes = await fetch('/api/import-url/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, saveToPc: isDesktopApp }),
+          signal: controller.signal,
         });
-        if (!stRes.ok) {
-          transientErrors += 1;
-          if (stRes.status === 404 || transientErrors >= 4) {
-            const errData = (await stRes.json().catch(() => ({}))) as { error?: string };
+
+        if (!startRes.ok) {
+          const errData = (await startRes.json().catch(() => ({}))) as { error?: string };
+          return {
+            ok: false,
+            error: errData.error || `El servidor respondió con estado ${startRes.status}.`,
+          };
+        }
+
+        const { jobId } = (await startRes.json().catch(() => ({}))) as { jobId?: string };
+        if (!jobId) {
+          return { ok: false, error: 'El servidor no devolvió un identificador de descarga.' };
+        }
+        activeImportJobIdRef.current = jobId;
+
+        // Poll live download progress from yt-dlp / FFmpeg / direct stream
+        let transientErrors = 0;
+        while (true) {
+          if (importCanceledRef.current || controller.signal.aborted) {
+            return { ok: false, canceled: true };
+          }
+          await new Promise((r) => setTimeout(r, 350));
+          if (importCanceledRef.current || controller.signal.aborted) {
+            return { ok: false, canceled: true };
+          }
+
+          const stRes = await fetch(`/api/import-url/${encodeURIComponent(jobId)}/status`, {
+            cache: 'no-store',
+            signal: controller.signal,
+          });
+          if (!stRes.ok) {
+            transientErrors += 1;
+            if (stRes.status === 404 || transientErrors >= 4) {
+              const errData = (await stRes.json().catch(() => ({}))) as { error?: string };
+              return {
+                ok: false,
+                error: errData.error || `Error consultando progreso (${stRes.status}).`,
+              };
+            }
+            continue;
+          }
+          transientErrors = 0;
+
+          const st = (await stRes.json()) as {
+            status: 'running' | 'ready' | 'blocked' | 'canceled' | 'error';
+            percent?: number;
+            label?: string;
+            blocked?: Partial<YouTubeBlockedInfo> & { videoId?: string };
+            error?: string;
+          };
+
+          if (typeof st.percent === 'number') {
+            pushProgress(st.percent, st.label);
+          } else if (st.label) {
+            setUrlStatusText(st.label);
+          }
+
+          if (st.status === 'canceled') {
+            return { ok: false, canceled: true };
+          }
+
+          const blockedVideoId = st.blocked?.videoId;
+          if (st.status === 'blocked' && blockedVideoId && st.blocked) {
+            const b = st.blocked;
             return {
               ok: false,
-              error: errData.error || `Error consultando progreso (${stRes.status}).`,
+              blocked: {
+                url,
+                videoId: blockedVideoId,
+                title: b.title || `YouTube_${blockedVideoId}`,
+                author: b.author || 'YouTube',
+                thumbnailUrl:
+                  b.thumbnailUrl || `https://i.ytimg.com/vi/${blockedVideoId}/hqdefault.jpg`,
+                embedUrl:
+                  b.embedUrl || `https://www.youtube.com/embed/${blockedVideoId}?rel=0&playsinline=1`,
+                watchUrl: b.watchUrl || `https://www.youtube.com/watch?v=${blockedVideoId}`,
+                reason: b.reason || 'YouTube solicitó verificación anti-bot.',
+              },
             };
           }
-          continue;
-        }
-        transientErrors = 0;
 
-        const st = (await stRes.json()) as {
-          status: 'running' | 'ready' | 'blocked' | 'error';
-          percent?: number;
-          label?: string;
-          blocked?: Partial<YouTubeBlockedInfo> & { videoId?: string };
-          error?: string;
-        };
+          if (st.status === 'error') {
+            return {
+              ok: false,
+              error: st.error || 'No se pudo importar el video desde esa URL.',
+            };
+          }
 
-        if (typeof st.percent === 'number') {
-          pushProgress(st.percent, st.label);
-        } else if (st.label) {
-          setUrlStatusText(st.label);
-        }
-
-        const blockedVideoId = st.blocked?.videoId;
-        if (st.status === 'blocked' && blockedVideoId && st.blocked) {
-          const b = st.blocked;
-          return {
-            ok: false,
-            blocked: {
-              url,
-              videoId: blockedVideoId,
-              title: b.title || `YouTube_${blockedVideoId}`,
-              author: b.author || 'YouTube',
-              thumbnailUrl:
-                b.thumbnailUrl || `https://i.ytimg.com/vi/${blockedVideoId}/hqdefault.jpg`,
-              embedUrl:
-                b.embedUrl || `https://www.youtube.com/embed/${blockedVideoId}?rel=0&playsinline=1`,
-              watchUrl: b.watchUrl || `https://www.youtube.com/watch?v=${blockedVideoId}`,
-              reason: b.reason || 'YouTube solicitó verificación anti-bot.',
-            },
-          };
-        }
-
-        if (st.status === 'error') {
-          return {
-            ok: false,
-            error: st.error || 'No se pudo importar el video desde esa URL.',
-          };
-        }
-
-        if (st.status === 'ready') {
-          break;
-        }
-      }
-
-      // Download completed file into browser memory / editor
-      pushProgress(Math.max(maxPercent, 96), 'Transfiriendo MP4 al editor...');
-      const res = await fetch(`/api/import-url/${encodeURIComponent(jobId)}/file`);
-      if (!res.ok) {
-        const errData = (await res.json().catch(() => ({}))) as { error?: string };
-        return {
-          ok: false,
-          error: errData.error || `No se pudo transferir el video (${res.status}).`,
-        };
-      }
-
-      const totalBytes = Number(res.headers.get('content-length') || 0);
-      let blob: Blob;
-      if (res.body && typeof res.body.getReader === 'function') {
-        const reader = res.body.getReader();
-        const chunks: Uint8Array[] = [];
-        let loaded = 0;
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (value) {
-            chunks.push(value);
-            loaded += value.byteLength;
-            if (totalBytes > 0) {
-              const transferPct = 96 + Math.round((loaded / totalBytes) * 3);
-              pushProgress(
-                Math.min(99, transferPct),
-                `Cargando MP4 en el editor... (${(loaded / (1024 * 1024)).toFixed(1)} / ${(totalBytes / (1024 * 1024)).toFixed(1)} MB)`
-              );
-            }
+          if (st.status === 'ready') {
+            break;
           }
         }
-        blob = new Blob(chunks as BlobPart[], {
-          type: res.headers.get('content-type') || 'video/mp4',
+
+        // Download completed file into browser memory / editor
+        pushProgress(Math.max(maxPercent, 96), 'Transfiriendo MP4 al editor...');
+        const res = await fetch(`/api/import-url/${encodeURIComponent(jobId)}/file`, {
+          signal: controller.signal,
         });
-      } else {
-        blob = await res.blob();
+        if (!res.ok) {
+          const errData = (await res.json().catch(() => ({}))) as { error?: string };
+          return {
+            ok: false,
+            error: errData.error || `No se pudo transferir el video (${res.status}).`,
+          };
+        }
+
+        const totalBytes = Number(res.headers.get('content-length') || 0);
+        let blob: Blob;
+        if (res.body && typeof res.body.getReader === 'function') {
+          const reader = res.body.getReader();
+          const chunks: Uint8Array[] = [];
+          let loaded = 0;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (importCanceledRef.current || controller.signal.aborted) {
+              return { ok: false, canceled: true };
+            }
+            if (value) {
+              chunks.push(value);
+              loaded += value.byteLength;
+              if (totalBytes > 0) {
+                const transferPct = 96 + Math.round((loaded / totalBytes) * 3);
+                pushProgress(
+                  Math.min(99, transferPct),
+                  `Cargando MP4 en el editor... (${(loaded / (1024 * 1024)).toFixed(1)} / ${(totalBytes / (1024 * 1024)).toFixed(1)} MB)`
+                );
+              }
+            }
+          }
+          blob = new Blob(chunks as BlobPart[], {
+            type: res.headers.get('content-type') || 'video/mp4',
+          });
+        } else {
+          blob = await res.blob();
+        }
+
+        if (blob.size === 0) {
+          return { ok: false, error: 'El video descargado está vacío.' };
+        }
+
+        pushProgress(100, 'Video listo en el editor');
+        const headerTitle = res.headers.get('x-video-title');
+        const decodedTitle = headerTitle ? decodeURIComponent(headerTitle) : '';
+        const headerSavedPc = res.headers.get('x-saved-pc-path');
+        const savedPcPath = headerSavedPc ? decodeURIComponent(headerSavedPc) : undefined;
+        const rawName = decodedTitle
+          ? /\.(mp4|webm|mov|m4v)$/i.test(decodedTitle)
+            ? decodedTitle
+            : `${decodedTitle}.mp4`
+          : url.split('/').pop()?.split('?')[0] || `video_${Date.now()}.mp4`;
+
+        await stageVideoBlob(blob, rawName, savedPcPath);
+        return { ok: true };
+      } catch (err) {
+        if (
+          importCanceledRef.current ||
+          controller.signal.aborted ||
+          (err instanceof DOMException && err.name === 'AbortError')
+        ) {
+          return { ok: false, canceled: true };
+        }
+        throw err;
+      } finally {
+        activeImportJobIdRef.current = null;
+        if (importAbortRef.current === controller) {
+          importAbortRef.current = null;
+        }
       }
-
-      if (blob.size === 0) {
-        return { ok: false, error: 'El video descargado está vacío.' };
-      }
-
-      pushProgress(100, 'Video listo en el editor');
-      const headerTitle = res.headers.get('x-video-title');
-      const decodedTitle = headerTitle ? decodeURIComponent(headerTitle) : '';
-      const rawName = decodedTitle
-        ? /\.(mp4|webm|mov|m4v)$/i.test(decodedTitle)
-          ? decodedTitle
-          : `${decodedTitle}.mp4`
-        : url.split('/').pop()?.split('?')[0] || `video_${Date.now()}.mp4`;
-
-      await stageVideoBlob(blob, rawName);
-      return { ok: true };
     },
-    [stageVideoBlob]
+    [isDesktopApp, stageVideoBlob]
   );
+
+  const handleCancelImportUrl = useCallback(() => {
+    importCanceledRef.current = true;
+    const jobId = activeImportJobIdRef.current;
+    if (importAbortRef.current) {
+      importAbortRef.current.abort();
+      importAbortRef.current = null;
+    }
+    if (jobId) {
+      fetch(`/api/import-url/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' }).catch(() => {});
+      activeImportJobIdRef.current = null;
+    }
+    setUrlStatusText('');
+    setUrlProgressPercent(0);
+    setCreateError('');
+    notify('Descarga cancelada');
+  }, [notify]);
 
   const handleDownloadLauncher = useCallback(() => {
     let token = appSettings.localConnectorToken;
@@ -611,6 +698,7 @@ export default function App() {
     async (url: string): Promise<boolean> => {
       setCreateError('');
       setConnectorModalError('');
+      importCanceledRef.current = false;
       setUrlProgressPercent(2);
       setUrlStatusText(
         isDesktopApp
@@ -653,6 +741,9 @@ export default function App() {
         if (result.ok) {
           return true;
         }
+        if (result.canceled) {
+          return false;
+        }
         if (result.blocked) {
           setYtBlockedInfo(result.blocked);
           return false;
@@ -660,6 +751,12 @@ export default function App() {
         setCreateError(result.error || 'No se pudo importar el video desde esa URL.');
         return false;
       } catch (err) {
+        if (
+          importCanceledRef.current ||
+          (err instanceof DOMException && err.name === 'AbortError')
+        ) {
+          return false;
+        }
         setCreateError(
           err instanceof Error
             ? `No se pudo importar desde esa URL (${err.message}).`
@@ -845,7 +942,8 @@ export default function App() {
         const record = targetProj.mediaBlobId
           ? await getMediaBlob(targetProj.mediaBlobId)
           : null;
-        const source: Blob | string | null = record?.blob || activeMediaUrl;
+        const source: Blob | string | null =
+          record?.blob || record?.url || (targetProj.id === activeProjectId ? activeMediaUrl : null);
 
         const { clip, addedTranscript } = await createManualClip({
           project: targetProj,
@@ -898,7 +996,15 @@ export default function App() {
         setManualProgressLabel('');
       }
     },
-    [activeMediaUrl, appSettings.whisperModel, authSession?.user?.id, manualCreating, notify, projects]
+    [
+      activeMediaUrl,
+      activeProjectId,
+      appSettings.whisperModel,
+      authSession?.user?.id,
+      manualCreating,
+      notify,
+      projects,
+    ]
   );
 
   const handleDeleteClip = useCallback(
@@ -955,7 +1061,8 @@ export default function App() {
       setRetranscribeStatus('Preparando audio...');
       try {
         const record = targetProj.mediaBlobId ? await getMediaBlob(targetProj.mediaBlobId) : null;
-        const source: Blob | string | null = record?.blob || activeMediaUrl;
+        const source: Blob | string | null =
+          record?.blob || record?.url || (targetProj.id === activeProjectId ? activeMediaUrl : null);
         if (!source) {
           notify('No se encontró el archivo de video local para transcribir');
           return;
@@ -1023,7 +1130,54 @@ export default function App() {
         setRetranscribeStatus('');
       }
     },
-    [activeMediaUrl, appSettings.whisperModel, authSession?.user?.id, notify, projects, retranscribing]
+    [
+      activeMediaUrl,
+      activeProjectId,
+      appSettings.whisperModel,
+      authSession?.user?.id,
+      notify,
+      projects,
+      retranscribing,
+    ]
+  );
+
+  const handleRelinkProjectMedia = useCallback(
+    async (projectId: string, file: File) => {
+      if (
+        !file.type.startsWith('video/') &&
+        !/\.(mp4|mov|webm|mkv|m4v)$/i.test(file.name)
+      ) {
+        notify('Selecciona un archivo de video válido (MP4, MOV o WebM)');
+        return;
+      }
+      const target = projects.find((p) => p.id === projectId);
+      if (!target) return;
+
+      try {
+        const meta = await extractVideoMetadataAndThumbnail(file);
+        const blobId = target.mediaBlobId || `media_${Date.now()}`;
+        await saveMediaBlob(blobId, file, file.name);
+        const updatedProj: ClipProject = {
+          ...target,
+          mediaBlobId: blobId,
+          mediaName: file.name,
+          thumbnailDataUrl: target.thumbnailDataUrl || meta.thumbnailDataUrl,
+          updatedAt: new Date().toISOString(),
+        };
+        await saveProject(updatedProj).catch(() => {});
+        if (authSession?.user?.id) {
+          void upsertCloudProject(authSession.user.id, updatedProj);
+        }
+        setProjects((prev) => prev.map((p) => (p.id === updatedProj.id ? updatedProj : p)));
+        setMediaRefreshTick((t) => t + 1);
+        notify('Video re-vinculado al proyecto');
+      } catch (err) {
+        notify(
+          err instanceof Error ? err.message : 'No se pudo re-vincular el video seleccionado'
+        );
+      }
+    },
+    [authSession?.user?.id, notify, projects]
   );
 
   const handleOpenEditor = useCallback(
@@ -1303,6 +1457,7 @@ export default function App() {
           onSelectFile={handleSelectFile}
           onOpenRecorder={() => setRecordModalOpen(true)}
           onImportUrl={handleImportUrl}
+          onCancelImportUrl={handleCancelImportUrl}
           onDownloadConnectorLauncher={handleDownloadLauncher}
           onSaveStagedToPc={handleSaveStagedToPc}
           onUpdateConfig={handleUpdateConfig}
@@ -1333,6 +1488,7 @@ export default function App() {
           retranscribeStatus={retranscribeStatus}
           onRetranscribeProject={handleRetranscribeProject}
           onOpenManualClipModal={handleOpenManualClipModal}
+          onRelinkMedia={handleRelinkProjectMedia}
           onRenameClip={handleRenameClip}
           onDeleteClip={handleDeleteClip}
           onEditClipInStudio={handleOpenEditor}
@@ -1350,6 +1506,7 @@ export default function App() {
           whisperModel={appSettings.whisperModel}
           onSelectClip={(cid) => setActiveClipId(cid)}
           onOpenManualClipModal={handleOpenManualClipModal}
+          onRelinkMedia={handleRelinkProjectMedia}
           onSaveClipEdits={handleSaveClipEdits}
           onBackToResults={() => setActiveView(activeProject ? 'results' : 'projects')}
           onNotify={notify}
@@ -1377,6 +1534,8 @@ export default function App() {
           settings={appSettings}
           projectsCount={projects.length}
           userEmail={authSession.user.email ?? null}
+          cloudSyncStatus={cloudSyncStatus}
+          cloudSyncDetail={cloudSyncDetail}
           onSignOut={handleSignOut}
           desktopUpdateState={desktopUpdateState}
           onCheckForUpdates={handleCheckForUpdates}

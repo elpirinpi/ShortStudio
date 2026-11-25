@@ -6,7 +6,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { ArrowLeft, Film, FileText, Music, Plus, Redo2, Undo2 } from 'lucide-react';
+import { ArrowLeft, Film, FileText, FolderOpen, Music, Plus, Redo2, Undo2 } from 'lucide-react';
 import {
   ClipProject,
   DEFAULT_SETTINGS,
@@ -26,7 +26,11 @@ import {
   trackFacesInVideo,
 } from '../utils/faceTracker';
 import { transcribeVideoRange } from '../utils/localAi';
-import { exportClipOffline, transcodeVideoViaMediaJob } from '../utils/offlineExporter';
+import {
+  exportClipOffline,
+  exportClipWithFfmpeg,
+  transcodeVideoViaMediaJob,
+} from '../utils/offlineExporter';
 import { exportSubtitlesToSRT, formatTime, parseSRT, splitScriptToSubtitles } from '../utils/srt';
 import { LeftSidebar } from './LeftSidebar';
 import { ExportFormatOption, ExportModal, ExportOptionsModal, ScriptModal } from './Modals';
@@ -45,6 +49,7 @@ interface ClipEditorWorkspaceProps {
   whisperModel: WhisperModelId;
   onSelectClip: (clipId: string) => void;
   onOpenManualClipModal?: (projectId: string) => void;
+  onRelinkMedia?: (projectId: string, file: File) => void;
   onSaveClipEdits: (
     projectId: string,
     clipId: string,
@@ -77,6 +82,7 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
       whisperModel,
       onSelectClip,
       onOpenManualClipModal,
+      onRelinkMedia,
       onSaveClipEdits,
       onBackToResults,
       onNotify,
@@ -134,6 +140,7 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const bgmRef = useRef<HTMLAudioElement | null>(null);
     const videoInputRef = useRef<HTMLInputElement | null>(null);
+    const relinkInputRef = useRef<HTMLInputElement | null>(null);
     const bgmInputRef = useRef<HTMLInputElement | null>(null);
     const srtInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -155,6 +162,7 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
     const standaloneFileRef = useRef<File | null>(null);
     const rawFaceKeyframesRef = useRef<FaceKeyframe[]>([]);
     const bgmUrlRef = useRef<string | null>(null);
+    const bgmFileRef = useRef<File | null>(null);
 
     const audioCtxRef = useRef<AudioContext | null>(null);
     const videoGainRef = useRef<GainNode | null>(null);
@@ -417,6 +425,18 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
           setCurrentTime(nextSettings.trimStart);
           window.requestAnimationFrame(() => drawCurrentFrame(nextSettings.trimStart));
         }
+      } else {
+        setIsDemo(false);
+        setHasMedia(false);
+        isDemoRef.current = false;
+        hasMediaRef.current = false;
+        boundProjectSrcRef.current = null;
+        if (videoRef.current) {
+          videoRef.current.pause();
+          videoRef.current.removeAttribute('src');
+        }
+        setCurrentTime(nextSettings.trimStart);
+        window.requestAnimationFrame(() => drawCurrentFrame(nextSettings.trimStart));
       }
     }, [activeProject, currentClip, mediaUrl, drawCurrentFrame, togglePlay]);
 
@@ -924,6 +944,7 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
       if (bgmUrlRef.current) URL.revokeObjectURL(bgmUrlRef.current);
       const url = URL.createObjectURL(file);
       bgmUrlRef.current = url;
+      bgmFileRef.current = file;
       bgmRef.current.src = url;
       bgmRef.current.load();
       setHasBgm(true);
@@ -944,6 +965,7 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
         URL.revokeObjectURL(bgmUrlRef.current);
         bgmUrlRef.current = null;
       }
+      bgmFileRef.current = null;
       setHasBgm(false);
       setBgmName('');
       hasBgmRef.current = false;
@@ -1140,8 +1162,40 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
         setExportProgress(0);
         setExportStatus(`Preparando renderizado exacto ${resLabel} (30fps)...`);
 
+        // Ultra-fast native FFmpeg backend path (zero browser frame-by-frame decode/seek)
+        if (formatChoice === 'ffmpeg-fast') {
+          const ffmpegResult = await exportClipWithFfmpeg({
+            source: standaloneFileRef.current || mediaUrl,
+            isDemo: isDemoRef.current,
+            bgmUrl: bgmUrlRef.current,
+            bgmBlob: bgmFileRef.current,
+            hasBgm: hasBgmRef.current,
+            settings: settingsRef.current,
+            subtitles: subtitlesRef.current,
+            signal,
+            onProgress: (pct, msg) => {
+              setExportProgress(pct);
+              setExportStatus(msg);
+            },
+          });
+
+          if (ffmpegResult.ok) {
+            downloadBlob(ffmpegResult.blob, 'mp4');
+            onNotify('Short exportado ultra-rápido con FFmpeg (.MP4)');
+            cleanupAfterExport();
+            return;
+          }
+
+          if (ffmpegResult.canceled) {
+            onNotify('Exportación cancelada');
+            cleanupAfterExport();
+            return;
+          }
+          // Fall through to WebCodecs offline MP4 if FFmpeg isn't applicable (e.g. Demo or watermark)
+        }
+
         // Primary deterministic offline path for MP4 (0ms A/V & subtitle drift, locked 30.000 fps)
-        if (formatChoice === 'mp4-h264') {
+        if (formatChoice === 'mp4-h264' || formatChoice === 'ffmpeg-fast') {
           const offlineResult = await exportClipOffline({
             source: standaloneFileRef.current || mediaUrl,
             isDemo: isDemoRef.current,
@@ -1224,7 +1278,7 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
             const rawExt = mimeType.includes('mp4') ? 'mp4' : 'webm';
             const rawBlob = new Blob(chunks, { type: mimeType });
 
-            if (formatChoice === 'mp4-h264') {
+            if (formatChoice === 'mp4-h264' || formatChoice === 'ffmpeg-fast') {
               setExportProgress(92);
               setExportStatus('Sincronizando y convirtiendo a MP4 Universal (30fps CFR)...');
               try {
@@ -1277,7 +1331,8 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
 
             const cur = getCurrentPlayTime();
             const elapsed = Math.max(0, cur - s.trimStart);
-            const maxRenderPct = formatChoice === 'mp4-h264' ? 90 : 99;
+            const maxRenderPct =
+              formatChoice === 'mp4-h264' || formatChoice === 'ffmpeg-fast' ? 90 : 99;
             const pct = Math.min(maxRenderPct, Math.max(0, (elapsed / segDur) * maxRenderPct));
             setExportProgress(pct);
             setExportStatus(
@@ -1430,6 +1485,19 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
           }}
         />
         <input
+          ref={relinkInputRef}
+          type="file"
+          accept="video/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f && activeProject && onRelinkMedia) {
+              onRelinkMedia(activeProject.id, f);
+            }
+            e.target.value = '';
+          }}
+        />
+        <input
           ref={bgmInputRef}
           type="file"
           accept="audio/*"
@@ -1484,6 +1552,16 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
                   >
                     <Plus className="w-3 h-3" />
                     <span>Nuevo Clip</span>
+                  </button>
+                )}
+                {!activeProject.isDemo && !hasMedia && !mediaUrl && onRelinkMedia && (
+                  <button
+                    type="button"
+                    onClick={() => relinkInputRef.current?.click()}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-amber-200 bg-amber-500/15 border border-amber-500/35 hover:bg-amber-500/25 whitespace-nowrap cursor-pointer"
+                  >
+                    <FolderOpen className="w-3 h-3" />
+                    <span>Re-vincular MP4</span>
                   </button>
                 )}
                 <span className="hidden xl:inline text-[11px] text-slate-500 whitespace-nowrap">

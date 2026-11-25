@@ -1,56 +1,55 @@
--- KellyClipAi Studio (ShortStudio) - Esquema opcional de sincronización en Supabase
--- Ejecuta este script en el SQL Editor de tu proyecto Supabase para sincronizar proyectos,
--- ajustes y calendario de publicaciones por usuario (los archivos MP4 permanecen locales en tu PC).
+-- Esquema de sincronización en la nube para KellyClipAi Studio (ShortStudio)
+-- Ejecuta este script una sola vez en el SQL Editor de tu proyecto Supabase.
 
-create table if not exists public.shortstudio_projects (
-  id text primary key,
-  user_id uuid not null references auth.users(id) on delete cascade,
-  data jsonb not null,
-  updated_at timestamptz not null default now()
+CREATE TABLE IF NOT EXISTS public.shortstudio_projects (
+  id TEXT NOT NULL,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  data JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, id)
 );
 
-create index if not exists shortstudio_projects_user_idx
-  on public.shortstudio_projects (user_id, updated_at desc);
-
-alter table public.shortstudio_projects enable row level security;
-
-drop policy if exists "Users manage own projects" on public.shortstudio_projects;
-create policy "Users manage own projects"
-  on public.shortstudio_projects
-  for all
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
-
-create table if not exists public.shortstudio_scheduled_posts (
-  id text primary key,
-  user_id uuid not null references auth.users(id) on delete cascade,
-  data jsonb not null,
-  scheduled_at timestamptz not null default now()
+CREATE TABLE IF NOT EXISTS public.shortstudio_scheduled_posts (
+  id TEXT NOT NULL,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  data JSONB NOT NULL,
+  scheduled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, id)
 );
 
-create index if not exists shortstudio_posts_user_idx
-  on public.shortstudio_scheduled_posts (user_id, scheduled_at asc);
-
-alter table public.shortstudio_scheduled_posts enable row level security;
-
-drop policy if exists "Users manage own scheduled posts" on public.shortstudio_scheduled_posts;
-create policy "Users manage own scheduled posts"
-  on public.shortstudio_scheduled_posts
-  for all
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
-
-create table if not exists public.shortstudio_settings (
-  user_id uuid primary key references auth.users(id) on delete cascade,
-  data jsonb not null,
-  updated_at timestamptz not null default now()
+CREATE TABLE IF NOT EXISTS public.shortstudio_settings (
+  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  data JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-alter table public.shortstudio_settings enable row level security;
+CREATE INDEX IF NOT EXISTS idx_shortstudio_projects_updated
+  ON public.shortstudio_projects (user_id, updated_at DESC);
 
-drop policy if exists "Users manage own settings" on public.shortstudio_settings;
-create policy "Users manage own settings"
-  on public.shortstudio_settings
-  for all
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+CREATE INDEX IF NOT EXISTS idx_shortstudio_posts_scheduled
+  ON public.shortstudio_scheduled_posts (user_id, scheduled_at ASC);
+
+ALTER TABLE public.shortstudio_projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shortstudio_scheduled_posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shortstudio_settings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "shortstudio_projects_owner" ON public.shortstudio_projects;
+CREATE POLICY "shortstudio_projects_owner"
+  ON public.shortstudio_projects
+  FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "shortstudio_posts_owner" ON public.shortstudio_scheduled_posts;
+CREATE POLICY "shortstudio_posts_owner"
+  ON public.shortstudio_scheduled_posts
+  FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "shortstudio_settings_owner" ON public.shortstudio_settings;
+CREATE POLICY "shortstudio_settings_owner"
+  ON public.shortstudio_settings
+  FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
