@@ -6,6 +6,21 @@ export type SubBgMode = 'none' | 'word-pill' | 'line-box' | 'glass-card';
 export type ProgressPos = 'top' | 'bottom';
 export type WatermarkPos = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 export type LeftTab = 'format' | 'subs' | 'color';
+export type HookStyle = 'white-box' | 'dark-neon' | 'red-hook' | 'minimal-clean';
+export type TransitionInType = 'none' | 'fade' | 'zoom-punch' | 'slide-up';
+
+export interface SpeechSegment {
+  start: number;
+  end: number;
+}
+
+export interface AudioProfile {
+  mediaBlobId: string;
+  durationSec: number;
+  peaks: number[];
+  energy20Hz: number[];
+  sampleRateHz: number;
+}
 
 export type AppView =
   | 'create'
@@ -60,6 +75,22 @@ export interface EditorSettings {
   trimStart: number;
   trimEnd: number;
   speed: number;
+
+  silenceCutEnabled?: boolean;
+  silenceThresholdDb?: number;
+  silenceMinSec?: number;
+  silencePaddingSec?: number;
+  speechSegments?: SpeechSegment[];
+
+  transitionIn?: TransitionInType;
+
+  hookEnabled?: boolean;
+  hookText?: string;
+  hookStyle?: HookStyle;
+  hookBgColor?: string;
+  hookTextColor?: string;
+  hookY?: number;
+  hookDurationSec?: number;
 
   progressBar: boolean;
   progressPos: ProgressPos;
@@ -217,6 +248,22 @@ export const DEFAULT_SETTINGS: EditorSettings = {
   trimStart: 0,
   trimEnd: 12,
   speed: 1,
+
+  silenceCutEnabled: false,
+  silenceThresholdDb: -34,
+  silenceMinSec: 0.45,
+  silencePaddingSec: 0.09,
+  speechSegments: [],
+
+  transitionIn: 'none',
+
+  hookEnabled: false,
+  hookText: '',
+  hookStyle: 'white-box',
+  hookBgColor: '#ffffff',
+  hookTextColor: '#0f172a',
+  hookY: 14,
+  hookDurationSec: 3.5,
 
   progressBar: true,
   progressPos: 'top',

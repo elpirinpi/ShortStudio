@@ -8,6 +8,7 @@ import React, {
 } from 'react';
 import { ArrowLeft, Film, FileText, FolderOpen, Music, Plus, Redo2, Undo2 } from 'lucide-react';
 import {
+  AudioProfile,
   ClipProject,
   DEFAULT_SETTINGS,
   DEFAULT_SUBTITLES,
@@ -19,7 +20,14 @@ import {
   SubtitleCue,
   WhisperModelId,
 } from '../types/editor';
+import { getOrExtractAudioProfile } from '../utils/audioProfile';
 import { computeTrackedPlacement, renderEditorFrame } from '../utils/canvasRenderer';
+import {
+  computeSpeechSegmentsFromEnergy,
+  getEffectiveOutputDuration,
+  getEffectiveSpeechSegments,
+  sourceTimeToOutputTime,
+} from '../utils/clipTiming';
 import {
   createDemoFaceKeyframes,
   smoothFaceKeyframes,
@@ -125,6 +133,10 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
       'Preparando renderizado con mezcla de audio...'
     );
     const [scriptModalOpen, setScriptModalOpen] = useState(false);
+    const [audioProfile, setAudioProfile] = useState<AudioProfile | null>(null);
+    const [waveformLoading, setWaveformLoading] = useState(false);
+    const audioProfileRef = useRef<AudioProfile | null>(null);
+    audioProfileRef.current = audioProfile;
 
     const [canUndo, setCanUndo] = useState(false);
     const [canRedo, setCanRedo] = useState(false);
@@ -525,7 +537,7 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
       onNotify('Cambio rehecho');
     }, [onNotify]);
 
-    // Preview render loop (throttled UI state + duplicate-frame guard for smooth playback)
+    // Preview render loop (throttled UI state + live jump-cut silence skipping)
     useEffect(() => {
       let rafId = 0;
 
@@ -536,16 +548,37 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
 
         if (isPlayingRef.current && !isExportingRef.current) {
           const s = settingsRef.current;
+          const segments = getEffectiveSpeechSegments(s);
+          const firstSegStart = segments[0]?.start ?? s.trimStart;
+          const lastSegEnd = segments[segments.length - 1]?.end ?? s.trimEnd;
+
+          const findNextJumpTarget = (curT: number): number | null => {
+            if (!s.silenceCutEnabled || segments.length <= 1) return null;
+            if (curT < segments[0].start - 0.04) return segments[0].start;
+            for (let idx = 0; idx < segments.length - 1; idx++) {
+              const curSeg = segments[idx];
+              const nextSeg = segments[idx + 1];
+              if (curT >= curSeg.end - 0.025 && curT < nextSeg.start - 0.02) {
+                return nextSeg.start;
+              }
+            }
+            return null;
+          };
+
           if (isDemoRef.current) {
             demoTimeRef.current += dt * s.speed;
-            if (demoTimeRef.current >= s.trimEnd) {
+            const jumpTarget = findNextJumpTarget(demoTimeRef.current);
+            if (jumpTarget !== null) {
+              demoTimeRef.current = jumpTarget;
+            }
+            if (demoTimeRef.current >= lastSegEnd) {
               if (loopRef.current) {
-                demoTimeRef.current = s.trimStart;
+                demoTimeRef.current = firstSegStart;
                 if (hasBgmRef.current && bgmRef.current?.duration) {
                   bgmRef.current.currentTime = 0;
                 }
               } else {
-                demoTimeRef.current = s.trimEnd;
+                demoTimeRef.current = lastSegEnd;
                 togglePlay(false);
               }
             }
@@ -556,9 +589,13 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
             drawCurrentFrame(demoTimeRef.current);
           } else if (hasMediaRef.current && videoRef.current) {
             const v = videoRef.current;
-            if (v.currentTime >= s.trimEnd || v.ended) {
+            const jumpTarget = findNextJumpTarget(v.currentTime);
+            if (jumpTarget !== null && !v.seeking) {
+              v.currentTime = jumpTarget;
+            }
+            if (v.currentTime >= lastSegEnd || v.ended) {
               if (loopRef.current) {
-                v.currentTime = s.trimStart;
+                v.currentTime = firstSegStart;
                 if (hasBgmRef.current && bgmRef.current?.duration) {
                   bgmRef.current.currentTime = 0;
                 }
@@ -568,7 +605,7 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
               }
             } else if (hasBgmRef.current && bgmRef.current && bgmRef.current.duration) {
               const expectedBgm =
-                (Math.max(0, v.currentTime - s.trimStart) / Math.max(0.25, s.speed)) %
+                sourceTimeToOutputTime(v.currentTime, segments, s.speed) %
                 bgmRef.current.duration;
               if (Math.abs(bgmRef.current.currentTime - expectedBgm) > 0.35) {
                 bgmRef.current.currentTime = expectedBgm;
@@ -623,6 +660,116 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
       };
     }, []);
 
+    // Load & cache audio waveform profile asynchronously when source changes
+    useEffect(() => {
+      if (!hasMedia && !isDemo) {
+        setAudioProfile(null);
+        return;
+      }
+
+      let canceled = false;
+      const source = standaloneFileRef.current || mediaUrl;
+      setWaveformLoading(true);
+      getOrExtractAudioProfile({
+        mediaBlobId: activeProject?.mediaBlobId ?? null,
+        source,
+        durationHint: durationRef.current || 12,
+        isDemo,
+        numBins: 360,
+      })
+        .then((prof) => {
+          if (!canceled) {
+            setAudioProfile(prof);
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!canceled) setWaveformLoading(false);
+        });
+
+      return () => {
+        canceled = true;
+      };
+    }, [activeProject?.mediaBlobId, hasMedia, isDemo, mediaUrl]);
+
+    const recomputeSilencesFromProfile = useCallback(
+      (
+        prof: AudioProfile,
+        opts: {
+          trimStart: number;
+          trimEnd: number;
+          thresholdDb?: number;
+          minSilenceSec?: number;
+          paddingSec?: number;
+        }
+      ) => {
+        return computeSpeechSegmentsFromEnergy(
+          prof.energy20Hz,
+          prof.sampleRateHz,
+          prof.durationSec || durationRef.current,
+          opts.trimStart,
+          opts.trimEnd,
+          {
+            thresholdDb: opts.thresholdDb ?? -34,
+            minSilenceSec: opts.minSilenceSec ?? 0.45,
+            paddingSec: opts.paddingSec ?? 0.09,
+          }
+        );
+      },
+      []
+    );
+
+    const handleDetectSilences = useCallback(async () => {
+      if (!hasMediaRef.current && !isDemoRef.current) {
+        onNotify('Carga un video o el Clip Demo primero');
+        return;
+      }
+      let prof = audioProfileRef.current;
+      if (!prof) {
+        setWaveformLoading(true);
+        try {
+          prof = await getOrExtractAudioProfile({
+            mediaBlobId: activeProject?.mediaBlobId ?? null,
+            source: standaloneFileRef.current || mediaUrl,
+            durationHint: durationRef.current || 12,
+            isDemo: isDemoRef.current,
+            numBins: 360,
+          });
+          setAudioProfile(prof);
+        } finally {
+          setWaveformLoading(false);
+        }
+      }
+      if (!prof || prof.energy20Hz.length === 0) {
+        onNotify('Este video no tiene pista de audio detectable');
+        return;
+      }
+
+      const s = settingsRef.current;
+      const segs = recomputeSilencesFromProfile(prof, {
+        trimStart: s.trimStart,
+        trimEnd: s.trimEnd,
+        thresholdDb: s.silenceThresholdDb,
+        minSilenceSec: s.silenceMinSec,
+        paddingSec: s.silencePaddingSec,
+      });
+
+      const rawDur = Math.max(0.1, s.trimEnd - s.trimStart);
+      const keptDur = segs.reduce((acc, seg) => acc + Math.max(0, seg.end - seg.start), 0);
+      const saved = Math.max(0, rawDur - keptDur);
+
+      setSettings((prev) => ({
+        ...prev,
+        silenceCutEnabled: true,
+        speechSegments: segs,
+      }));
+      onNotify(
+        saved >= 0.2
+          ? `Silencios recortados: ${segs.length} bloques · -${saved.toFixed(1)}s ahorrados`
+          : 'No se encontraron pausas largas en el rango actual'
+      );
+    }, [activeProject?.mediaBlobId, mediaUrl, onNotify, recomputeSilencesFromProfile]);
+
     const updateSetting = useCallback(
       <K extends keyof EditorSettings>(key: K, value: EditorSettings[K]) => {
         setSettings((prev) => {
@@ -633,10 +780,26 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
               value as number
             );
           }
+          if (
+            (key === 'silenceThresholdDb' ||
+              key === 'silenceMinSec' ||
+              key === 'silenceCutEnabled') &&
+            next.silenceCutEnabled &&
+            audioProfileRef.current &&
+            audioProfileRef.current.energy20Hz.length > 0
+          ) {
+            next.speechSegments = recomputeSilencesFromProfile(audioProfileRef.current, {
+              trimStart: next.trimStart,
+              trimEnd: next.trimEnd,
+              thresholdDb: next.silenceThresholdDb,
+              minSilenceSec: next.silenceMinSec,
+              paddingSec: next.silencePaddingSec,
+            });
+          }
           return next;
         });
       },
-      []
+      [recomputeSilencesFromProfile]
     );
 
     const applySubtitlePreset = useCallback((patch: Partial<EditorSettings>) => {
@@ -1166,6 +1329,7 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
         if (formatChoice === 'ffmpeg-fast') {
           const ffmpegResult = await exportClipWithFfmpeg({
             source: standaloneFileRef.current || mediaUrl,
+            mediaBlobId: standaloneFileRef.current ? null : activeProject?.mediaBlobId ?? null,
             isDemo: isDemoRef.current,
             bgmUrl: bgmUrlRef.current,
             bgmBlob: bgmFileRef.current,
@@ -1634,10 +1798,12 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
             trackingFaces={trackingFaces}
             faceTrackProgress={faceTrackProgress}
             faceTrackStatus={faceTrackStatus}
+            analyzingAudio={waveformLoading}
             onUpdateSetting={updateSetting}
             onApplySubtitlePreset={applySubtitlePreset}
             onTrimStartChange={handleTrimStartChange}
             onTrimEndChange={handleTrimEndChange}
+            onDetectSilences={handleDetectSilences}
             onResetFraming={() =>
               setSettings((prev) => ({ ...prev, zoom: 100, panX: 0, panY: 0 }))
             }
@@ -1718,6 +1884,10 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
           bgmName={bgmName}
           subtitles={subtitles}
           selectedSubId={selectedSubId}
+          audioPeaks={audioProfile?.peaks}
+          waveformLoading={waveformLoading}
+          silenceCutEnabled={settings.silenceCutEnabled}
+          speechSegments={settings.speechSegments}
           onSeek={seekTo}
           onSelectSub={setSelectedSubId}
           onMoveSub={handleMoveSub}
@@ -1728,7 +1898,7 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
         <ExportOptionsModal
           open={exportOptionsOpen}
           dimensionsLabel={dimsLabel}
-          durationSec={Math.max(0.1, settings.trimEnd - settings.trimStart) / settings.speed}
+          durationSec={getEffectiveOutputDuration(settings)}
           hasWatermark={Boolean(settings.watermarkEnabled && settings.watermarkText?.trim())}
           selectedFormat={exportFormat}
           onSelectFormat={setExportFormat}

@@ -1,10 +1,18 @@
 import { ArrayBufferTarget, Muxer } from 'mp4-muxer';
-import { EditorSettings, getCanvasDimensions, SubtitleCue } from '../types/editor';
+import {
+  EditorSettings,
+  GeneratedClip,
+  getCanvasDimensions,
+  SpeechSegment,
+  SubtitleCue,
+} from '../types/editor';
 import { renderEditorFrame } from './canvasRenderer';
+import { getEffectiveSpeechSegments, outputTimeToSourceTime } from './clipTiming';
 import { formatTime } from './srt';
 
 export interface OfflineExportParams {
   source: Blob | string | null;
+  mediaBlobId?: string | null;
   isDemo: boolean;
   bgmUrl: string | null;
   hasBgm: boolean;
@@ -15,7 +23,7 @@ export interface OfflineExportParams {
 }
 
 export type OfflineExportResult =
-  | { ok: true; blob: Blob; usedServerMux: boolean }
+  | { ok: true; blob: Blob; usedServerMux: boolean; savedPath?: string }
   | { ok: false; canceled: boolean; fallbackNeeded: boolean; reason?: string };
 
 const EXPORT_FPS = 30;
@@ -60,8 +68,7 @@ async function renderExactAudioMix(params: {
   isDemo: boolean;
   bgmUrl: string | null;
   hasBgm: boolean;
-  trimStart: number;
-  srcDuration: number;
+  segments: SpeechSegment[];
   outDuration: number;
   speed: number;
   volVideo: number;
@@ -72,8 +79,7 @@ async function renderExactAudioMix(params: {
     isDemo,
     bgmUrl,
     hasBgm,
-    trimStart,
-    srcDuration,
+    segments,
     outDuration,
     speed,
     volVideo,
@@ -89,17 +95,21 @@ async function renderExactAudioMix(params: {
   ]);
 
   if (videoAudio) {
-    const safeOffset = Math.min(Math.max(0, trimStart), Math.max(0, videoAudio.duration - 0.01));
-    const maxAvail = Math.max(0, videoAudio.duration - safeOffset);
-    if (maxAvail > 0.02) {
-      const srcNode = offline.createBufferSource();
-      srcNode.buffer = videoAudio;
-      srcNode.playbackRate.value = speed;
-      const gain = offline.createGain();
-      gain.gain.value = Math.max(0, Math.min(2, volVideo / 100));
-      srcNode.connect(gain);
-      gain.connect(offline.destination);
-      srcNode.start(0, safeOffset, Math.min(srcDuration, maxAvail));
+    let outCursor = 0;
+    for (const seg of segments) {
+      const safeOffset = Math.min(Math.max(0, seg.start), Math.max(0, videoAudio.duration - 0.01));
+      const segDur = Math.max(0, Math.min(seg.end - safeOffset, videoAudio.duration - safeOffset));
+      if (segDur > 0.02) {
+        const srcNode = offline.createBufferSource();
+        srcNode.buffer = videoAudio;
+        srcNode.playbackRate.value = speed;
+        const gain = offline.createGain();
+        gain.gain.value = Math.max(0, Math.min(2, volVideo / 100));
+        srcNode.connect(gain);
+        gain.connect(offline.destination);
+        srcNode.start(outCursor, safeOffset, segDur);
+        outCursor += segDur / speed;
+      }
     }
   }
 
@@ -289,30 +299,35 @@ async function muxVideoAndWavOnServer(videoBuf: ArrayBuffer, wavBuf: ArrayBuffer
 }
 
 export async function exportClipWithFfmpeg(
-  params: OfflineExportParams & { bgmBlob?: Blob | null }
+  params: OfflineExportParams & {
+    bgmBlob?: Blob | null;
+    saveToBatchFolder?: { projectTitle: string; fileName: string };
+  }
 ): Promise<OfflineExportResult> {
-  const { source, isDemo, bgmBlob, hasBgm, settings, subtitles, signal, onProgress } = params;
+  const {
+    source,
+    mediaBlobId,
+    isDemo,
+    bgmBlob,
+    hasBgm,
+    settings,
+    subtitles,
+    saveToBatchFolder,
+    signal,
+    onProgress,
+  } = params;
 
-  if (isDemo || !source) {
+  if (isDemo || (!source && !mediaBlobId)) {
     return { ok: false, canceled: false, fallbackNeeded: true, reason: 'Sin video fuente' };
   }
 
   try {
-    onProgress(6, 'Preparando archivo para renderizado FFmpeg nativo...');
-    let videoBlob: Blob;
-    if (source instanceof Blob) {
-      videoBlob = source;
-    } else {
-      const resp = await fetch(source);
-      if (!resp.ok) {
-        return { ok: false, canceled: false, fallbackNeeded: true };
-      }
-      videoBlob = await resp.blob();
-    }
-
-    if (signal.canceled) {
-      return { ok: false, canceled: true, fallbackNeeded: false };
-    }
+    const canUseDiskMediaId = Boolean(
+      mediaBlobId &&
+        /^[a-zA-Z0-9_-]{4,80}$/.test(mediaBlobId) &&
+        typeof source === 'string' &&
+        source.includes('/api/local-media/')
+    );
 
     const initRes = await fetch('/api/media-job/init', { method: 'POST' });
     if (!initRes.ok) {
@@ -320,15 +335,37 @@ export async function exportClipWithFfmpeg(
     }
     const { jobId } = (await initRes.json()) as { jobId: string };
 
-    onProgress(20, 'Enviando pista de video al motor FFmpeg...');
-    await uploadBlobInChunks(videoBlob, 'video', jobId);
+    if (!canUseDiskMediaId) {
+      onProgress(6, 'Preparando archivo para renderizado FFmpeg nativo...');
+      let videoBlob: Blob;
+      if (source instanceof Blob) {
+        videoBlob = source;
+      } else if (typeof source === 'string') {
+        const resp = await fetch(source);
+        if (!resp.ok) {
+          return { ok: false, canceled: false, fallbackNeeded: true };
+        }
+        videoBlob = await resp.blob();
+      } else {
+        return { ok: false, canceled: false, fallbackNeeded: true };
+      }
+
+      if (signal.canceled) {
+        return { ok: false, canceled: true, fallbackNeeded: false };
+      }
+
+      onProgress(22, 'Enviando pista de video al motor FFmpeg...');
+      await uploadBlobInChunks(videoBlob, 'video', jobId);
+    } else {
+      onProgress(28, 'Leyendo video original directamente desde disco...');
+    }
 
     if (signal.canceled) {
       return { ok: false, canceled: true, fallbackNeeded: false };
     }
 
     if (hasBgm && bgmBlob && bgmBlob.size > 0 && settings.volBgm > 0) {
-      onProgress(40, 'Enviando música de fondo...');
+      onProgress(42, 'Enviando música de fondo...');
       await uploadBlobInChunks(bgmBlob, 'audio', jobId);
     }
 
@@ -336,15 +373,35 @@ export async function exportClipWithFfmpeg(
       return { ok: false, canceled: true, fallbackNeeded: false };
     }
 
-    onProgress(58, 'Renderizando video 30fps, encuadre y subtítulos con FFmpeg...');
+    onProgress(58, 'Renderizando 9:16, cortes de silencio, gancho y subtítulos con FFmpeg...');
     const res = await fetch(`/api/media-job/${jobId}/export-ffmpeg`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ settings, subtitles }),
+      body: JSON.stringify({
+        mediaId: canUseDiskMediaId ? mediaBlobId : undefined,
+        saveToBatchFolder,
+        settings,
+        subtitles,
+      }),
     });
 
     if (!res.ok) {
       return { ok: false, canceled: false, fallbackNeeded: true };
+    }
+
+    const ct = (res.headers.get('content-type') || '').toLowerCase();
+    if (ct.includes('application/json')) {
+      const json = (await res.json()) as { ok?: boolean; savedPath?: string };
+      if (!json.ok) {
+        return { ok: false, canceled: false, fallbackNeeded: true };
+      }
+      onProgress(100, '¡MP4 guardado en carpeta de Lote!');
+      return {
+        ok: true,
+        blob: new Blob([], { type: 'video/mp4' }),
+        usedServerMux: true,
+        savedPath: json.savedPath,
+      };
     }
 
     const blob = await res.blob();
@@ -452,7 +509,16 @@ export async function exportClipOffline(
 
     const effectiveTrimStart = Math.min(settings.trimStart, Math.max(0, effectiveTrimEnd - 0.1));
     const speed = Math.max(0.25, Math.min(4, settings.speed || 1));
-    const srcDuration = Math.max(0.1, effectiveTrimEnd - effectiveTrimStart);
+    const clampedSettings: EditorSettings = {
+      ...settings,
+      trimStart: effectiveTrimStart,
+      trimEnd: effectiveTrimEnd,
+    };
+    const segments = getEffectiveSpeechSegments(clampedSettings);
+    const srcDuration = Math.max(
+      0.1,
+      segments.reduce((acc, seg) => acc + Math.max(0, seg.end - seg.start), 0)
+    );
     const outDuration = srcDuration / speed;
     const totalFrames = Math.max(1, Math.round(outDuration * EXPORT_FPS));
     const frameDurUs = Math.round(1_000_000 / EXPORT_FPS);
@@ -462,8 +528,7 @@ export async function exportClipOffline(
       isDemo,
       bgmUrl,
       hasBgm,
-      trimStart: effectiveTrimStart,
-      srcDuration,
+      segments,
       outDuration,
       speed,
       volVideo: settings.volVideo,
@@ -578,7 +643,7 @@ export async function exportClipOffline(
       }
 
       const outTimeSec = i / EXPORT_FPS;
-      const srcTime = Math.min(effectiveTrimEnd, effectiveTrimStart + outTimeSec * speed);
+      const srcTime = outputTimeToSourceTime(outTimeSec, segments, speed);
 
       if (!isDemo && exportVideo) {
         await seekVideoExact(exportVideo, srcTime, maxVideoTime);
@@ -592,7 +657,7 @@ export async function exportClipOffline(
         hasMedia: !isDemo,
         isDemo,
         currentTime: srcTime,
-        settings,
+        settings: clampedSettings,
         subtitles,
       });
 
@@ -676,3 +741,148 @@ export async function exportClipOffline(
     }
   }
 }
+
+export interface BatchExportProgress {
+  completed: number;
+  total: number;
+  currentIndex: number;
+  currentClipTitle: string;
+  currentClipPct: number;
+  overallPct: number;
+  statusText: string;
+  savedPaths: string[];
+  failedClips: string[];
+}
+
+export async function exportClipsBatch(params: {
+  projectTitle: string;
+  clips: GeneratedClip[];
+  source: Blob | string | null;
+  mediaBlobId: string | null;
+  isDemo: boolean;
+  engine: 'ffmpeg-fast' | 'mp4-h264';
+  saveToPcFolder: boolean;
+  signal: { canceled: boolean };
+  onProgress: (p: BatchExportProgress) => void;
+}): Promise<{
+  canceled: boolean;
+  completedCount: number;
+  savedPaths: string[];
+  failedClips: string[];
+}> {
+  const {
+    projectTitle,
+    clips,
+    source,
+    mediaBlobId,
+    isDemo,
+    engine,
+    saveToPcFolder,
+    signal,
+    onProgress,
+  } = params;
+
+  const total = clips.length;
+  const savedPaths: string[] = [];
+  const failedClips: string[] = [];
+  let completed = 0;
+
+  const triggerDownload = (blob: Blob, fileName: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 6000);
+  };
+
+  for (let i = 0; i < total; i++) {
+    if (signal.canceled) {
+      return { canceled: true, completedCount: completed, savedPaths, failedClips };
+    }
+
+    const clip = clips[i];
+    const safeTitle = clip.title
+      .replace(/[<>:"/\\|?*]+/g, '')
+      .trim()
+      .replace(/\s+/g, '_')
+      .slice(0, 40) || `Clip_${i + 1}`;
+    const fileName = `${String(i + 1).padStart(2, '0')}_${safeTitle}.mp4`;
+
+    const report = (clipPct: number, statusText: string) => {
+      const overallPct = Math.min(100, Math.round(((i + clipPct / 100) / Math.max(1, total)) * 100));
+      onProgress({
+        completed,
+        total,
+        currentIndex: i,
+        currentClipTitle: clip.title,
+        currentClipPct: Math.round(clipPct),
+        overallPct,
+        statusText,
+        savedPaths: [...savedPaths],
+        failedClips: [...failedClips],
+      });
+    };
+
+    report(2, `Iniciando clip ${i + 1} de ${total}: ${clip.title}`);
+
+    let res: OfflineExportResult = { ok: false, canceled: false, fallbackNeeded: true };
+
+    if (engine === 'ffmpeg-fast' && !isDemo) {
+      res = await exportClipWithFfmpeg({
+        source,
+        mediaBlobId,
+        isDemo,
+        bgmUrl: null,
+        hasBgm: false,
+        settings: clip.editorSettings,
+        subtitles: clip.subtitles,
+        saveToBatchFolder: saveToPcFolder ? { projectTitle, fileName } : undefined,
+        signal,
+        onProgress: (pct, msg) => report(pct, msg),
+      });
+    }
+
+    if (!res.ok && !res.canceled) {
+      res = await exportClipOffline({
+        source,
+        mediaBlobId,
+        isDemo,
+        bgmUrl: null,
+        hasBgm: false,
+        settings: clip.editorSettings,
+        subtitles: clip.subtitles,
+        signal,
+        onProgress: (pct, msg) => report(pct, msg),
+      });
+    }
+
+    if ((!res.ok && res.canceled) || signal.canceled) {
+      return { canceled: true, completedCount: completed, savedPaths, failedClips };
+    }
+
+    if (res.ok) {
+      completed += 1;
+      if (res.savedPath) {
+        savedPaths.push(res.savedPath);
+      } else if (res.blob.size > 0) {
+        triggerDownload(res.blob, fileName);
+        await new Promise((r) => window.setTimeout(r, 450));
+      }
+      report(100, `Clip ${i + 1}/${total} completado`);
+    } else {
+      failedClips.push(clip.title);
+      report(100, `Error en ${clip.title}`);
+    }
+  }
+
+  return {
+    canceled: false,
+    completedCount: completed,
+    savedPaths,
+    failedClips,
+  };
+}
+

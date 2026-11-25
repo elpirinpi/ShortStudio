@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { ClipEditorHandle, ClipEditorWorkspace } from './components/ClipEditorWorkspace';
 import { CreatePage, StagedMediaInfo } from './components/CreatePage';
 import { LoginScreen } from './components/LoginScreen';
+import { BatchExportModal, BatchExportSummary } from './components/Modals';
 import { ManualClipModal } from './components/ManualClipModal';
 import { ProjectsPage } from './components/ProjectsPage';
 import { RecordModal } from './components/RecordModal';
@@ -70,6 +71,12 @@ import {
   probeWindowsConnector,
   saveBlobToPcDownloads,
 } from './utils/windowsConnector';
+import { getOrExtractAudioProfile } from './utils/audioProfile';
+import {
+  computeSpeechSegmentsFromEnergy,
+  getEffectiveOutputDuration,
+} from './utils/clipTiming';
+import { BatchExportProgress, exportClipsBatch } from './utils/offlineExporter';
 
 function buildConfigFromSettings(s: AppSettings): ProjectConfig {
   return {
@@ -113,6 +120,12 @@ export default function App() {
   const [manualProgressPct, setManualProgressPct] = useState(0);
   const [manualProgressLabel, setManualProgressLabel] = useState('');
   const [manualModalError, setManualModalError] = useState('');
+  const [batchExportProjectId, setBatchExportProjectId] = useState<string | null>(null);
+  const [batchExporting, setBatchExporting] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<BatchExportProgress | null>(null);
+  const [batchSummary, setBatchSummary] = useState<BatchExportSummary | null>(null);
+  const batchSignalRef = useRef<{ canceled: boolean }>({ canceled: false });
+  const [compactingClipId, setCompactingClipId] = useState<string | null>(null);
   const [ytBlockedInfo, setYtBlockedInfo] = useState<YouTubeBlockedInfo | null>(null);
   const [connectorStatus, setConnectorStatus] = useState<ConnectorStatus>({ connected: false });
   const [connectorDownloading, setConnectorDownloading] = useState(false);
@@ -1302,7 +1315,7 @@ export default function App() {
                 start: nextSettings.trimStart,
                 end: nextSettings.trimEnd,
                 duration: Number(
-                  Math.max(0.3, nextSettings.trimEnd - nextSettings.trimStart).toFixed(1)
+                  Math.max(0.3, getEffectiveOutputDuration(nextSettings)).toFixed(1)
                 ),
                 editorSettings: nextSettings,
                 subtitles: nextSubtitles,
@@ -1321,6 +1334,199 @@ export default function App() {
       );
     },
     [authSession?.user?.id]
+  );
+
+  const handleOpenBatchExport = useCallback((projectId: string) => {
+    setBatchSummary(null);
+    setBatchProgress(null);
+    setBatchExportProjectId(projectId);
+  }, []);
+
+  const handleCancelBatchExport = useCallback(() => {
+    batchSignalRef.current.canceled = true;
+  }, []);
+
+  const handleStartBatchExport = useCallback(
+    async (clipIds: string[], engine: 'ffmpeg-fast' | 'mp4-h264') => {
+      const targetProj = projects.find((p) => p.id === batchExportProjectId);
+      if (!targetProj || batchExporting) return;
+
+      const selectedClips = targetProj.clips.filter((c) => clipIds.includes(c.id));
+      if (selectedClips.length === 0) return;
+
+      batchSignalRef.current = { canceled: false };
+      setBatchExporting(true);
+      setBatchSummary(null);
+      setBatchProgress({
+        completed: 0,
+        total: selectedClips.length,
+        currentIndex: 0,
+        currentClipTitle: selectedClips[0].title,
+        currentClipPct: 0,
+        overallPct: 1,
+        statusText: 'Preparando exportación por lotes...',
+        savedPaths: [],
+        failedClips: [],
+      });
+
+      try {
+        const record = targetProj.mediaBlobId
+          ? await getMediaBlob(targetProj.mediaBlobId)
+          : null;
+        const source: Blob | string | null =
+          record?.blob ||
+          record?.url ||
+          (targetProj.id === activeProjectId ? activeMediaUrl : null);
+
+        const summary = await exportClipsBatch({
+          projectTitle: targetProj.title,
+          clips: selectedClips,
+          source,
+          mediaBlobId: targetProj.mediaBlobId,
+          isDemo: targetProj.isDemo,
+          engine,
+          saveToPcFolder: isDesktopApp && engine === 'ffmpeg-fast',
+          signal: batchSignalRef.current,
+          onProgress: (p) => setBatchProgress(p),
+        });
+
+        setBatchSummary(summary);
+        if (summary.canceled) {
+          notify(`Lote cancelado (${summary.completedCount} exportados)`);
+        } else if (summary.failedClips.length > 0) {
+          notify(
+            `Lote completado con avisos: ${summary.completedCount} OK, ${summary.failedClips.length} con error`
+          );
+        } else {
+          notify(`Lote completado: ${summary.completedCount} clips MP4 exportados`);
+        }
+      } catch (err) {
+        notify(
+          err instanceof Error ? err.message : 'Error durante la exportación por lotes'
+        );
+      } finally {
+        setBatchExporting(false);
+      }
+    },
+    [activeMediaUrl, activeProjectId, batchExportProjectId, batchExporting, isDesktopApp, notify, projects]
+  );
+
+  const handleToggleClipSilenceCut = useCallback(
+    async (projectId: string, clipId: string) => {
+      if (compactingClipId) return;
+      const targetProj = projects.find((p) => p.id === projectId);
+      const targetClip = targetProj?.clips.find((c) => c.id === clipId);
+      if (!targetProj || !targetClip) return;
+
+      if (targetClip.editorSettings.silenceCutEnabled) {
+        const nextSettings: EditorSettings = {
+          ...targetClip.editorSettings,
+          silenceCutEnabled: false,
+        };
+        const updatedProj: ClipProject = {
+          ...targetProj,
+          updatedAt: new Date().toISOString(),
+          clips: targetProj.clips.map((c) =>
+            c.id === clipId
+              ? {
+                  ...c,
+                  duration: Number(
+                    Math.max(0.3, getEffectiveOutputDuration(nextSettings)).toFixed(1)
+                  ),
+                  editorSettings: nextSettings,
+                }
+              : c
+          ),
+        };
+        await saveProject(updatedProj).catch(() => {});
+        if (authSession?.user?.id) {
+          void upsertCloudProject(authSession.user.id, updatedProj);
+        }
+        setProjects((prev) => prev.map((p) => (p.id === updatedProj.id ? updatedProj : p)));
+        notify('Pausas restauradas en el clip');
+        return;
+      }
+
+      setCompactingClipId(clipId);
+      try {
+        let segments = targetClip.editorSettings.speechSegments;
+        if (!segments || segments.length === 0) {
+          const record = targetProj.mediaBlobId
+            ? await getMediaBlob(targetProj.mediaBlobId)
+            : null;
+          const source: Blob | string | null =
+            record?.blob ||
+            record?.url ||
+            (targetProj.id === activeProjectId ? activeMediaUrl : null);
+
+          const profile = await getOrExtractAudioProfile({
+            mediaBlobId: targetProj.mediaBlobId,
+            source,
+            durationHint: targetProj.duration,
+            isDemo: targetProj.isDemo,
+          });
+          if (!profile) {
+            notify('No se pudo analizar el audio de este clip para recortar silencios');
+            return;
+          }
+          segments = computeSpeechSegmentsFromEnergy(
+            profile.energy20Hz,
+            profile.sampleRateHz,
+            profile.durationSec || targetProj.duration,
+            targetClip.editorSettings.trimStart,
+            targetClip.editorSettings.trimEnd,
+            {
+              thresholdDb: targetClip.editorSettings.silenceThresholdDb ?? -34,
+              minSilenceSec: targetClip.editorSettings.silenceMinSec ?? 0.45,
+              paddingSec: targetClip.editorSettings.silencePaddingSec ?? 0.09,
+            }
+          );
+        }
+
+        const nextSettings: EditorSettings = {
+          ...targetClip.editorSettings,
+          silenceCutEnabled: true,
+          speechSegments: segments,
+        };
+        const nextDur = Number(
+          Math.max(0.3, getEffectiveOutputDuration(nextSettings)).toFixed(1)
+        );
+        const updatedProj: ClipProject = {
+          ...targetProj,
+          updatedAt: new Date().toISOString(),
+          clips: targetProj.clips.map((c) =>
+            c.id === clipId
+              ? {
+                  ...c,
+                  duration: nextDur,
+                  editorSettings: nextSettings,
+                }
+              : c
+          ),
+        };
+        await saveProject(updatedProj).catch(() => {});
+        if (authSession?.user?.id) {
+          void upsertCloudProject(authSession.user.id, updatedProj);
+        }
+        setProjects((prev) => prev.map((p) => (p.id === updatedProj.id ? updatedProj : p)));
+
+        const rawOut = Math.max(
+          0.3,
+          (nextSettings.trimEnd - nextSettings.trimStart) / (nextSettings.speed || 1)
+        );
+        const saved = Math.max(0, rawOut - nextDur);
+        notify(
+          saved >= 0.2
+            ? `Silencios recortados: -${saved.toFixed(1)}s ahorrados`
+            : 'Sin pausas largas detectadas en este rango'
+        );
+      } catch (err) {
+        notify(err instanceof Error ? err.message : 'Error al detectar silencios');
+      } finally {
+        setCompactingClipId(null);
+      }
+    },
+    [activeMediaUrl, activeProjectId, authSession?.user?.id, compactingClipId, notify, projects]
   );
 
   const handleScheduleClip = useCallback((projectId: string, clipId: string) => {
@@ -1486,8 +1692,11 @@ export default function App() {
           mediaUrl={activeMediaUrl}
           retranscribing={retranscribing}
           retranscribeStatus={retranscribeStatus}
+          compactingClipId={compactingClipId}
           onRetranscribeProject={handleRetranscribeProject}
           onOpenManualClipModal={handleOpenManualClipModal}
+          onOpenBatchExport={handleOpenBatchExport}
+          onToggleClipSilenceCut={handleToggleClipSilenceCut}
           onRelinkMedia={handleRelinkProjectMedia}
           onRenameClip={handleRenameClip}
           onDeleteClip={handleDeleteClip}
@@ -1572,6 +1781,35 @@ export default function App() {
         }}
         onCreateClip={handleCreateManualClip}
       />
+
+      {(() => {
+        const batchProj = projects.find((p) => p.id === batchExportProjectId) || null;
+        return (
+          <BatchExportModal
+            open={Boolean(batchExportProjectId && batchProj)}
+            projectTitle={batchProj?.title || ''}
+            clips={batchProj?.clips || []}
+            isDesktop={isDesktopApp}
+            isDemo={Boolean(batchProj?.isDemo)}
+            hasMedia={Boolean(
+              batchProj &&
+                (batchProj.mediaBlobId || (batchProj.id === activeProjectId && activeMediaUrl))
+            )}
+            exporting={batchExporting}
+            progress={batchProgress}
+            summary={batchSummary}
+            onClose={() => {
+              if (!batchExporting) {
+                setBatchExportProjectId(null);
+                setBatchProgress(null);
+                setBatchSummary(null);
+              }
+            }}
+            onStartBatch={handleStartBatchExport}
+            onCancelBatch={handleCancelBatchExport}
+          />
+        );
+      })()}
 
       <YouTubeImportModal
         info={ytBlockedInfo}

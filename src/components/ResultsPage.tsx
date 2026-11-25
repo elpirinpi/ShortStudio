@@ -6,6 +6,7 @@ import {
   Download,
   FileText,
   FolderOpen,
+  Layers,
   LoaderCircle,
   Mic,
   Pause,
@@ -18,6 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import { ClipProject, GeneratedClip } from '../types/editor';
+import { getEffectiveOutputDuration } from '../utils/clipTiming';
 import { exportSubtitlesToSRT, formatTime } from '../utils/srt';
 
 interface ResultsPageProps {
@@ -25,8 +27,11 @@ interface ResultsPageProps {
   mediaUrl: string | null;
   retranscribing?: boolean;
   retranscribeStatus?: string;
+  compactingClipId?: string | null;
   onRetranscribeProject?: (projectId: string) => void;
   onOpenManualClipModal?: (projectId: string) => void;
+  onOpenBatchExport?: (projectId: string) => void;
+  onToggleClipSilenceCut?: (projectId: string, clipId: string) => void;
   onRelinkMedia?: (projectId: string, file: File) => void;
   onRenameClip?: (projectId: string, clipId: string, title: string) => void;
   onDeleteClip?: (projectId: string, clipId: string) => void;
@@ -123,8 +128,11 @@ export function ResultsPage({
   mediaUrl,
   retranscribing = false,
   retranscribeStatus = '',
+  compactingClipId = null,
   onRetranscribeProject,
   onOpenManualClipModal,
+  onOpenBatchExport,
+  onToggleClipSilenceCut,
   onRelinkMedia,
   onRenameClip,
   onDeleteClip,
@@ -229,6 +237,17 @@ export function ResultsPage({
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Nuevo Clip Manual</span>
+              </button>
+            )}
+            {onOpenBatchExport && (
+              <button
+                type="button"
+                disabled={project.clips.length === 0 || (!project.isDemo && !mediaUrl)}
+                onClick={() => onOpenBatchExport(project.id)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/35 hover:bg-emerald-500/20 disabled:opacity-40 cursor-pointer whitespace-nowrap"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Exportar Lote (.MP4)</span>
               </button>
             )}
             {!project.isDemo && onRetranscribeProject && (
@@ -410,9 +429,23 @@ export function ResultsPage({
                         <div className="flex flex-wrap items-center gap-2 text-xs font-mono-tabular text-slate-400">
                           <span>Clip #{idx + 1}</span>
                           <span aria-hidden="true">·</span>
-                          <span>{clip.duration.toFixed(1)}s</span>
+                          <span>
+                            {getEffectiveOutputDuration(clip.editorSettings).toFixed(1)}s
+                          </span>
                           <span aria-hidden="true">·</span>
                           <span>{clip.subtitles.length} bloques de subtítulo</span>
+                          {clip.editorSettings.silenceCutEnabled && (
+                            <>
+                              <span aria-hidden="true">·</span>
+                              <span className="text-emerald-400">Sin silencios</span>
+                            </>
+                          )}
+                          {clip.editorSettings.hookEnabled && clip.editorSettings.hookText && (
+                            <>
+                              <span aria-hidden="true">·</span>
+                              <span className="text-indigo-300">Gancho superior</span>
+                            </>
+                          )}
                           {clip.editorSettings.faceTracking &&
                             clip.editorSettings.faceKeyframes?.length > 0 && (
                               <>
@@ -543,6 +576,33 @@ export function ResultsPage({
                       <Scissors className="w-3.5 h-3.5" />
                       <span>Editar y Exportar en ShortStudio</span>
                     </button>
+                    {onToggleClipSilenceCut && (
+                      <button
+                        type="button"
+                        disabled={
+                          compactingClipId === clip.id || (!project.isDemo && !mediaUrl)
+                        }
+                        onClick={() => onToggleClipSilenceCut(project.id, clip.id)}
+                        className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium border cursor-pointer whitespace-nowrap disabled:opacity-45 ${
+                          clip.editorSettings.silenceCutEnabled
+                            ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/35 hover:bg-emerald-500/20'
+                            : 'text-slate-200 bg-[#191d26] border-slate-800 hover:bg-[#222733]'
+                        }`}
+                      >
+                        {compactingClipId === clip.id ? (
+                          <LoaderCircle className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                        ) : (
+                          <Scissors className="w-3.5 h-3.5 text-emerald-400" />
+                        )}
+                        <span>
+                          {compactingClipId === clip.id
+                            ? 'Analizando...'
+                            : clip.editorSettings.silenceCutEnabled
+                            ? 'Silencios Recortados'
+                            : 'Compactar Silencios'}
+                        </span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => onScheduleClip(project.id, clip.id)}

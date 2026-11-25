@@ -1201,6 +1201,152 @@ export async function startServer(options: StartServerOptions = {}) {
     }
   });
 
+  const extractAudioPeaksFromFile = async (
+    ffmpegBin: string,
+    inputPath: string,
+    numBins = 360
+  ): Promise<{
+    durationSec: number;
+    peaks: number[];
+    energy20Hz: number[];
+    sampleRateHz: number;
+  }> => {
+    const safeBins = Math.max(40, Math.min(720, Math.round(numBins || 360)));
+    const SAMPLE_RATE = 8000;
+    const TARGET_HZ = 20;
+    const SAMPLES_PER_FRAME = SAMPLE_RATE / TARGET_HZ; // 400 samples = 50ms
+    const BYTES_PER_FRAME = SAMPLES_PER_FRAME * 2; // 800 bytes (s16le)
+
+    const energy20Hz: number[] = [];
+    const raw50msPeaks: number[] = [];
+    let totalSamples = 0;
+
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn(
+        ffmpegBin,
+        ['-v', 'error', '-i', inputPath, '-vn', '-ac', '1', '-ar', String(SAMPLE_RATE), '-f', 's16le', 'pipe:1'],
+        { stdio: ['ignore', 'pipe', 'pipe'] }
+      );
+
+      let pending: Buffer = Buffer.alloc(0);
+      let stderrText = '';
+      const timer = setTimeout(() => {
+        try {
+          proc.kill('SIGKILL');
+        } catch {
+          // ignore
+        }
+        reject(new Error('Tiempo agotado extrayendo perfil de audio.'));
+      }, 120_000);
+
+      proc.stdout.on('data', (chunk: Buffer) => {
+        pending = pending.length > 0 ? Buffer.concat([pending, chunk]) : chunk;
+        let offset = 0;
+        while (offset + BYTES_PER_FRAME <= pending.length) {
+          let sumSq = 0;
+          let maxAbs = 0;
+          for (let i = 0; i < SAMPLES_PER_FRAME; i++) {
+            const sample = pending.readInt16LE(offset + i * 2) / 32768;
+            sumSq += sample * sample;
+            const abs = Math.abs(sample);
+            if (abs > maxAbs) maxAbs = abs;
+          }
+          const rms = Math.sqrt(sumSq / SAMPLES_PER_FRAME);
+          if (energy20Hz.length < 144_000) {
+            energy20Hz.push(Math.min(255, Math.round(rms * 255 * 1.45)));
+            raw50msPeaks.push(Math.min(1, maxAbs));
+          }
+          totalSamples += SAMPLES_PER_FRAME;
+          offset += BYTES_PER_FRAME;
+        }
+        if (offset > 0) {
+          pending = pending.subarray(offset);
+        }
+      });
+
+      proc.stderr.on('data', (d: Buffer) => {
+        if (stderrText.length < 2000) stderrText += d.toString('utf8');
+      });
+
+      proc.on('error', (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+
+      proc.on('close', (code) => {
+        clearTimeout(timer);
+        if (pending.length >= 4) {
+          const remSamples = Math.floor(pending.length / 2);
+          let sumSq = 0;
+          let maxAbs = 0;
+          for (let i = 0; i < remSamples; i++) {
+            const sample = pending.readInt16LE(i * 2) / 32768;
+            sumSq += sample * sample;
+            const abs = Math.abs(sample);
+            if (abs > maxAbs) maxAbs = abs;
+          }
+          if (energy20Hz.length < 144_000) {
+            energy20Hz.push(Math.min(255, Math.round(Math.sqrt(sumSq / remSamples) * 255 * 1.45)));
+            raw50msPeaks.push(Math.min(1, maxAbs));
+          }
+          totalSamples += remSamples;
+        }
+
+        // Videos without audio stream yield empty output; return silent profile gracefully
+        if (code !== 0 && totalSamples === 0) {
+          resolve();
+          return;
+        }
+        resolve();
+      });
+    });
+
+    if (raw50msPeaks.length === 0) {
+      return { durationSec: 0, peaks: [], energy20Hz: [], sampleRateHz: TARGET_HZ };
+    }
+
+    const peaks: number[] = [];
+    for (let b = 0; b < safeBins; b++) {
+      const s = Math.floor((b / safeBins) * raw50msPeaks.length);
+      const e = Math.max(s + 1, Math.floor(((b + 1) / safeBins) * raw50msPeaks.length));
+      let pk = 0;
+      for (let k = s; k < e; k++) {
+        if (raw50msPeaks[k] > pk) pk = raw50msPeaks[k];
+      }
+      peaks.push(Number(pk.toFixed(3)));
+    }
+
+    return {
+      durationSec: Number((totalSamples / SAMPLE_RATE).toFixed(2)),
+      peaks,
+      energy20Hz,
+      sampleRateHz: TARGET_HZ,
+    };
+  };
+
+  app.post('/api/audio-peaks', async (req: Request, res: Response) => {
+    const body = (req.body || {}) as { mediaId?: string; numBins?: number };
+    const mediaId = String(body.mediaId || '').trim();
+    const paths = resolveLocalMediaPaths(mediaId);
+    if (!paths || !fs.existsSync(paths.binPath)) {
+      res.status(404).json({ error: 'Video local no encontrado en disco.' });
+      return;
+    }
+
+    try {
+      const ffmpegBin = await ensureFfmpeg();
+      const result = await extractAudioPeaksFromFile(ffmpegBin, paths.binPath, body.numBins);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? `Error analizando onda de audio: ${err.message}`
+            : 'No se pudo analizar la onda de audio.',
+      });
+    }
+  });
+
   interface ImportUrlJob {
     id: string;
     status: 'running' | 'ready' | 'blocked' | 'error' | 'canceled';
@@ -1893,6 +2039,35 @@ export async function startServer(options: StartServerOptions = {}) {
     }
   });
 
+  app.post('/api/media-job/:jobId/audio-peaks', async (req: Request, res: Response) => {
+    const jobDir = resolveSafeJobDir(String(req.params.jobId || ''));
+    if (!jobDir) {
+      res.status(404).json({ error: 'Sesión de audio inválida o expirada.' });
+      return;
+    }
+
+    const inPath = path.resolve(jobDir, 'video.bin');
+    try {
+      if (!fs.existsSync(inPath)) {
+        res.status(400).json({ error: 'No se recibió archivo de video.' });
+        return;
+      }
+      const body = (req.body || {}) as { numBins?: number };
+      const ffmpegBin = await ensureFfmpeg();
+      const result = await extractAudioPeaksFromFile(ffmpegBin, inPath, body.numBins);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? `Error extrayendo onda de audio: ${err.message}`
+            : 'No se pudo analizar la onda de audio.',
+      });
+    } finally {
+      await cleanupJobDir(jobDir);
+    }
+  });
+
   app.post('/api/media-job/:jobId/export-ffmpeg', async (req: Request, res: Response) => {
     const jobDir = resolveSafeJobDir(String(req.params.jobId || ''));
     if (!jobDir) {
@@ -1900,18 +2075,15 @@ export async function startServer(options: StartServerOptions = {}) {
       return;
     }
 
-    const videoPath = path.resolve(jobDir, 'video.bin');
+    const uploadedVideoPath = path.resolve(jobDir, 'video.bin');
     const bgmPath = path.resolve(jobDir, 'audio.bin');
     const subsPath = path.resolve(jobDir, 'subs.ass');
     const outPath = path.resolve(jobDir, 'out.mp4');
 
     try {
-      if (!fs.existsSync(videoPath)) {
-        res.status(400).json({ error: 'Falta el video fuente para exportar.' });
-        return;
-      }
-
       const body = (req.body || {}) as {
+        mediaId?: string;
+        saveToBatchFolder?: { projectTitle?: string; fileName?: string };
         settings?: Partial<AssBuilderSettings> & {
           ratio?: '9:16' | '1:1' | '16:9';
           fitMode?: 'cover' | 'blur' | 'fit';
@@ -1924,9 +2096,32 @@ export async function startServer(options: StartServerOptions = {}) {
           progressBar?: boolean;
           progressPos?: 'top' | 'bottom';
           progressColor?: string;
+          silenceCutEnabled?: boolean;
+          speechSegments?: Array<{ start: number; end: number }>;
+          transitionIn?: 'none' | 'fade' | 'zoom-punch' | 'slide-up';
+          hookEnabled?: boolean;
+          hookText?: string;
+          hookStyle?: 'white-box' | 'dark-neon' | 'red-hook' | 'minimal-clean';
+          hookBgColor?: string;
+          hookTextColor?: string;
+          hookY?: number;
+          hookDurationSec?: number;
         };
         subtitles?: AssSubtitleCue[];
       };
+
+      let sourceVideoPath = uploadedVideoPath;
+      if (!fs.existsSync(sourceVideoPath) && body.mediaId) {
+        const localPaths = resolveLocalMediaPaths(String(body.mediaId));
+        if (localPaths && fs.existsSync(localPaths.binPath)) {
+          sourceVideoPath = localPaths.binPath;
+        }
+      }
+
+      if (!fs.existsSync(sourceVideoPath)) {
+        res.status(400).json({ error: 'Falta el video fuente para exportar.' });
+        return;
+      }
 
       const s = body.settings || {};
       const ratio = s.ratio || '9:16';
@@ -1935,31 +2130,66 @@ export async function startServer(options: StartServerOptions = {}) {
       const trimStart = Math.max(0, Number(s.trimStart || 0));
       const trimEnd = Math.max(trimStart + 0.1, Number(s.trimEnd || trimStart + 10));
       const speed = Math.max(0.25, Math.min(4, Number(s.speed || 1)));
-      const srcDur = Math.max(0.1, trimEnd - trimStart);
-      const outDur = srcDur / speed;
       const fitMode = s.fitMode || 'cover';
       const volVideo = Math.max(0, Math.min(200, Number(s.volVideo ?? 100)));
       const volBgm = Math.max(0, Math.min(200, Number(s.volBgm ?? 35)));
       const hasBgmFile = fs.existsSync(bgmPath) && fs.statSync(bgmPath).size > 0 && volBgm > 0;
 
+      // Resolve jump-cut speech segments safely
+      let segments: Array<{ start: number; end: number }> = [{ start: trimStart, end: trimEnd }];
+      if (s.silenceCutEnabled && Array.isArray(s.speechSegments) && s.speechSegments.length > 0) {
+        const valid = s.speechSegments
+          .map((seg) => ({
+            start: Math.max(trimStart, Number(seg.start)),
+            end: Math.min(trimEnd, Number(seg.end)),
+          }))
+          .filter((seg) => Number.isFinite(seg.start) && Number.isFinite(seg.end) && seg.end - seg.start >= 0.08)
+          .sort((a, b) => a.start - b.start);
+        if (valid.length > 0) {
+          while (valid.length > 42) {
+            let minGapIdx = 0;
+            let minGap = Infinity;
+            for (let i = 0; i < valid.length - 1; i++) {
+              const gap = valid[i + 1].start - valid[i].end;
+              if (gap < minGap) {
+                minGap = gap;
+                minGapIdx = i;
+              }
+            }
+            valid[minGapIdx].end = valid[minGapIdx + 1].end;
+            valid.splice(minGapIdx + 1, 1);
+          }
+          segments = valid;
+        }
+      }
+
+      const srcDur = Math.max(
+        0.1,
+        segments.reduce((acc, seg) => acc + Math.max(0, seg.end - seg.start), 0)
+      );
+      const outDur = srcDur / speed;
+
       const ffmpegBin = await ensureFfmpeg();
 
       // Quick probe to see if source video contains an audio stream
       const hasVideoAudio = await new Promise<boolean>((resolve) => {
-        execFile(ffmpegBin, ['-i', 'video.bin'], { cwd: jobDir, timeout: 10_000 }, (_err, _so, se) => {
+        execFile(ffmpegBin, ['-i', sourceVideoPath], { timeout: 10_000 }, (_err, _so, se) => {
           resolve(/Stream\s+#0:\d+.*Audio:/i.test(se || ''));
         });
       });
 
       const cues = Array.isArray(body.subtitles) ? body.subtitles : [];
-      const hasSubs = cues.length > 0;
-      if (hasSubs) {
+      const hasHook = Boolean(s.hookEnabled && s.hookText?.trim());
+      const hasAssOverlay = cues.length > 0 || hasHook;
+
+      if (hasAssOverlay) {
         const assContent = buildAssSubtitles(cues, {
           width: W,
           height: H,
           trimStart,
           trimEnd,
           speed,
+          speechSegments: segments,
           subUpper: Boolean(s.subUpper ?? true),
           subSize: Number(s.subSize ?? 68),
           subY: Number(s.subY ?? 68),
@@ -1970,16 +2200,54 @@ export async function startServer(options: StartServerOptions = {}) {
           subStrokeColor: String(s.subStrokeColor || '#000000'),
           subBgColor: String(s.subBgColor || '#0f172a'),
           subBgMode: s.subBgMode || 'none',
+          hook: hasHook
+            ? {
+                enabled: true,
+                text: String(s.hookText || ''),
+                style: s.hookStyle || 'white-box',
+                bgColor: String(s.hookBgColor || '#ffffff'),
+                textColor: String(s.hookTextColor || '#0f172a'),
+                yPct: Number(s.hookY ?? 14),
+                durationSec: Number(s.hookDurationSec ?? 3.5),
+              }
+            : undefined,
         });
         await fs.promises.writeFile(subsPath, assContent, 'utf8');
       }
 
+      // Fast keyframe pre-seek when cutting from deep inside long Desktop videos
+      const firstStart = segments[0].start;
+      const lastEnd = segments[segments.length - 1].end;
+      const preSeek = firstStart > 3 ? Math.max(0, Number((firstStart - 0.5).toFixed(3))) : 0;
+      const relSegments = segments.map((seg) => ({
+        start: Math.max(0, seg.start - preSeek),
+        end: Math.max(0.05, seg.end - preSeek),
+      }));
+
       const filters: string[] = [];
-      let vChain = `[0:v]trim=start=${trimStart.toFixed(3)}:end=${trimEnd.toFixed(3)},setpts=PTS-STARTPTS`;
-      if (Math.abs(speed - 1) > 0.005) {
-        vChain += `,setpts=PTS/${speed.toFixed(4)}`;
+
+      if (relSegments.length === 1) {
+        let vChain = `[0:v]trim=start=${relSegments[0].start.toFixed(3)}:end=${relSegments[0].end.toFixed(3)},setpts=PTS-STARTPTS`;
+        if (Math.abs(speed - 1) > 0.005) {
+          vChain += `,setpts=PTS/${speed.toFixed(4)}`;
+        }
+        filters.push(`${vChain}[vtrim]`);
+      } else {
+        const k = relSegments.length;
+        const splitLabels = relSegments.map((_, idx) => `[vs${idx}]`);
+        filters.push(`[0:v]split=${k}${splitLabels.join('')}`);
+        const sliceLabels: string[] = [];
+        for (let idx = 0; idx < k; idx++) {
+          const seg = relSegments[idx];
+          filters.push(
+            `[vs${idx}]trim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},setpts=PTS-STARTPTS[vc${idx}]`
+          );
+          sliceLabels.push(`[vc${idx}]`);
+        }
+        const speedSuffix =
+          Math.abs(speed - 1) > 0.005 ? `,setpts=PTS/${speed.toFixed(4)}` : '';
+        filters.push(`${sliceLabels.join('')}concat=n=${k}:v=1:a=0${speedSuffix}[vtrim]`);
       }
-      filters.push(`${vChain}[vtrim]`);
 
       if (fitMode === 'fit') {
         filters.push(
@@ -2019,7 +2287,25 @@ export async function startServer(options: StartServerOptions = {}) {
         curVLabel = 'veq';
       }
 
-      if (hasSubs) {
+      // Entry transition (TikTok / Reels style)
+      const transitionIn = s.transitionIn || 'none';
+      if (transitionIn === 'fade') {
+        filters.push(`[${curVLabel}]fade=t=in:st=0:d=0.45[vtrans]`);
+        curVLabel = 'vtrans';
+      } else if (transitionIn === 'zoom-punch') {
+        filters.push(
+          `[${curVLabel}]crop=w='iw/(1+0.15*(1-min(1,t/0.42)))':h='ih/(1+0.15*(1-min(1,t/0.42)))':x='(iw-out_w)/2':y='(ih-out_h)/2',scale=${W}:${H}[vtrans]`
+        );
+        curVLabel = 'vtrans';
+      } else if (transitionIn === 'slide-up') {
+        filters.push(`color=c=black:s=${W}x${H}:r=30:d=${outDur.toFixed(3)}[bgslide]`);
+        filters.push(
+          `[bgslide][${curVLabel}]overlay=y='if(lt(t,0.40),pow(1-t/0.40,2)*(H*0.20),0)':eof_action=pass[vtrans]`
+        );
+        curVLabel = 'vtrans';
+      }
+
+      if (hasAssOverlay) {
         filters.push(`[${curVLabel}]ass=subs.ass[vsub]`);
         curVLabel = 'vsub';
       }
@@ -2040,7 +2326,6 @@ export async function startServer(options: StartServerOptions = {}) {
         filters.push(`[${curVLabel}]setsar=1,format=yuv420p[vout]`);
       }
 
-      // Build valid atempo chain for arbitrary 0.25..4.0 speed
       const buildAtempoFilters = (spd: number): string[] => {
         const parts: string[] = [];
         let rem = spd;
@@ -2061,13 +2346,30 @@ export async function startServer(options: StartServerOptions = {}) {
       const useVideoAudio = hasVideoAudio && volVideo > 0;
       if (useVideoAudio) {
         const tempoChain = buildAtempoFilters(speed);
-        const aOps = [
-          `atrim=start=${trimStart.toFixed(3)}:end=${trimEnd.toFixed(3)}`,
-          'asetpts=PTS-STARTPTS',
-          ...tempoChain,
-          `volume=${(volVideo / 100).toFixed(2)}`,
-        ];
-        filters.push(`[0:a]${aOps.join(',')}[va]`);
+        const volStr = `volume=${(volVideo / 100).toFixed(2)}`;
+        if (relSegments.length === 1) {
+          const aOps = [
+            `atrim=start=${relSegments[0].start.toFixed(3)}:end=${relSegments[0].end.toFixed(3)}`,
+            'asetpts=PTS-STARTPTS',
+            ...tempoChain,
+            volStr,
+          ];
+          filters.push(`[0:a]${aOps.join(',')}[va]`);
+        } else {
+          const k = relSegments.length;
+          const splitLabels = relSegments.map((_, idx) => `[as${idx}]`);
+          filters.push(`[0:a]asplit=${k}${splitLabels.join('')}`);
+          const sliceLabels: string[] = [];
+          for (let idx = 0; idx < k; idx++) {
+            const seg = relSegments[idx];
+            filters.push(
+              `[as${idx}]atrim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},asetpts=PTS-STARTPTS[ac${idx}]`
+            );
+            sliceLabels.push(`[ac${idx}]`);
+          }
+          const postOps = [...tempoChain, volStr].join(',');
+          filters.push(`${sliceLabels.join('')}concat=n=${k}:v=0:a=1,${postOps}[va]`);
+        }
       }
 
       if (hasBgmFile) {
@@ -2086,7 +2388,11 @@ export async function startServer(options: StartServerOptions = {}) {
         filters.push(`anullsrc=r=48000:cl=stereo:d=${outDur.toFixed(3)}[aout]`);
       }
 
-      const ffmpegArgs: string[] = ['-y', '-i', 'video.bin'];
+      const ffmpegArgs: string[] = ['-y'];
+      if (preSeek > 0) {
+        ffmpegArgs.push('-ss', preSeek.toFixed(3), '-to', (lastEnd + 0.5).toFixed(3));
+      }
+      ffmpegArgs.push('-i', sourceVideoPath);
       if (hasBgmFile) {
         ffmpegArgs.push('-i', 'audio.bin');
       }
@@ -2117,9 +2423,28 @@ export async function startServer(options: StartServerOptions = {}) {
         'out.mp4'
       );
 
-      await execFileAsync(ffmpegBin, ffmpegArgs, { cwd: jobDir, timeout: 240_000 });
+      await execFileAsync(ffmpegBin, ffmpegArgs, { cwd: jobDir, timeout: 300_000 });
 
       const stat = await fs.promises.stat(outPath);
+
+      if (body.saveToBatchFolder?.fileName) {
+        const projFolder = sanitizeDownloadFilename(
+          body.saveToBatchFolder.projectTitle || 'ShortStudio_Lote'
+        ).replace(/\.[^/.]+$/, '');
+        const baseFile = sanitizeDownloadFilename(
+          body.saveToBatchFolder.fileName.replace(/\.mp4$/i, '')
+        );
+        const batchDir = path.join(os.homedir(), 'Downloads', 'ShortStudio', 'Lotes', projFolder);
+        await fs.promises.mkdir(batchDir, { recursive: true });
+        let destPath = path.join(batchDir, `${baseFile}.mp4`);
+        if (fs.existsSync(destPath)) {
+          destPath = path.join(batchDir, `${baseFile}_${Date.now().toString().slice(-4)}.mp4`);
+        }
+        await fs.promises.copyFile(outPath, destPath);
+        res.json({ ok: true, savedPath: destPath, size: stat.size });
+        return;
+      }
+
       res.setHeader('Content-Type', 'video/mp4');
       res.setHeader('Content-Length', String(stat.size));
       await pipeline(fs.createReadStream(outPath), res);

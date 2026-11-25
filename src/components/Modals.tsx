@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Download, Mic, Square, X } from 'lucide-react';
+import { Check, Download, FolderCheck, Layers, LoaderCircle, Mic, Square, X } from 'lucide-react';
+import { GeneratedClip } from '../types/editor';
+import { getEffectiveOutputDuration } from '../utils/clipTiming';
+import { BatchExportProgress } from '../utils/offlineExporter';
 
 export type ExportFormatOption = 'mp4-h264' | 'ffmpeg-fast' | 'webm-fast';
 
@@ -362,3 +365,300 @@ export function ScriptModal({ open, onClose, onGenerate }: ScriptModalProps) {
     </div>
   );
 }
+
+export interface BatchExportSummary {
+  canceled: boolean;
+  completedCount: number;
+  savedPaths: string[];
+  failedClips: string[];
+}
+
+interface BatchExportModalProps {
+  open: boolean;
+  projectTitle: string;
+  clips: GeneratedClip[];
+  isDesktop: boolean;
+  isDemo: boolean;
+  hasMedia: boolean;
+  exporting: boolean;
+  progress: BatchExportProgress | null;
+  summary: BatchExportSummary | null;
+  onClose: () => void;
+  onStartBatch: (clipIds: string[], engine: 'ffmpeg-fast' | 'mp4-h264') => void;
+  onCancelBatch: () => void;
+}
+
+export function BatchExportModal({
+  open,
+  projectTitle,
+  clips,
+  isDesktop,
+  isDemo,
+  hasMedia,
+  exporting,
+  progress,
+  summary,
+  onClose,
+  onStartBatch,
+  onCancelBatch,
+}: BatchExportModalProps) {
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [engine, setEngine] = useState<'ffmpeg-fast' | 'mp4-h264'>(
+    isDemo ? 'mp4-h264' : 'ffmpeg-fast'
+  );
+
+  useEffect(() => {
+    if (open) {
+      setSelectedIds(clips.map((c) => c.id));
+      setEngine(isDemo ? 'mp4-h264' : 'ffmpeg-fast');
+    }
+  }, [open, clips, isDemo]);
+
+  if (!open) return null;
+
+  const allSelected = clips.length > 0 && selectedIds.length === clips.length;
+  const toggleAll = () => {
+    setSelectedIds(allSelected ? [] : clips.map((c) => c.id));
+  };
+  const toggleOne = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const canStart = selectedIds.length > 0 && (hasMedia || isDemo) && !exporting;
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget && !exporting) onClose();
+      }}
+    >
+      <div className="w-full max-w-xl bg-[#12151c] border border-slate-800 rounded-xl p-6 flex flex-col gap-4 shadow-2xl max-h-[90vh]">
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1 min-w-0">
+            <h3 className="inline-flex items-center gap-2 text-base font-semibold text-slate-100">
+              <Layers className="w-4 h-4 text-indigo-400" />
+              <span>Exportación por Lotes (.MP4)</span>
+            </h3>
+            <p className="text-xs text-slate-400 truncate">
+              {projectTitle} · {clips.length} clips disponibles
+            </p>
+          </div>
+          {!exporting && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-[#191d26] cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {summary ? (
+          <div className="space-y-4">
+            <div className="bg-[#0b0d11] border border-slate-800 rounded-lg p-4 space-y-2">
+              <div className="flex items-center gap-2 text-sm font-semibold text-emerald-400">
+                <FolderCheck className="w-4 h-4" />
+                <span>
+                  {summary.canceled
+                    ? `Lote cancelado (${summary.completedCount} exportados)`
+                    : `${summary.completedCount} clips exportados correctamente`}
+                </span>
+              </div>
+              {summary.savedPaths.length > 0 && (
+                <p className="text-xs text-slate-300 leading-relaxed break-all">
+                  Guardados en carpeta local:{' '}
+                  <span className="font-mono-tabular text-indigo-300">
+                    {summary.savedPaths[0].replace(/[\\/][^\\/]+$/, '')}
+                  </span>
+                </p>
+              )}
+              {summary.failedClips.length > 0 && (
+                <p className="text-xs text-amber-400">
+                  No se pudieron exportar: {summary.failedClips.join(', ')}
+                </p>
+              )}
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 cursor-pointer"
+              >
+                Listo
+              </button>
+            </div>
+          </div>
+        ) : exporting && progress ? (
+          <div className="space-y-4">
+            <div className="bg-[#0b0d11] border border-slate-800 rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="inline-flex items-center gap-2 font-semibold text-slate-100">
+                  <LoaderCircle className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                  <span>
+                    Clip {progress.currentIndex + 1} de {progress.total}
+                  </span>
+                </span>
+                <span className="font-mono-tabular text-indigo-400 font-semibold">
+                  {progress.overallPct}% total
+                </span>
+              </div>
+              <div className="h-2.5 w-full bg-[#12151c] border border-slate-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-indigo-500 transition-[width] duration-150 ease-linear"
+                  style={{ width: `${Math.min(100, Math.max(0, progress.overallPct))}%` }}
+                />
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-slate-200 truncate">
+                  {progress.currentClipTitle}
+                </p>
+                <p className="text-[11px] font-mono-tabular text-slate-400">
+                  {progress.statusText}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={onCancelBatch}
+                className="px-4 py-2 rounded-lg text-xs font-medium text-rose-300 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 cursor-pointer"
+              >
+                Cancelar Lote
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between text-xs border-b border-slate-800/80 pb-2">
+              <label className="inline-flex items-center gap-2 text-slate-200 font-medium cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleAll}
+                  className="w-4 h-4 accent-indigo-500 cursor-pointer"
+                />
+                <span>Seleccionar todos</span>
+              </label>
+              <span className="font-mono-tabular text-slate-400">
+                {selectedIds.length} / {clips.length} seleccionados
+              </span>
+            </div>
+
+            <div className="flex-1 min-h-0 max-h-60 overflow-y-auto space-y-1.5 pr-1">
+              {clips.map((clip, idx) => {
+                const checked = selectedIds.includes(clip.id);
+                const outDur = getEffectiveOutputDuration(clip.editorSettings);
+                return (
+                  <label
+                    key={clip.id}
+                    className={`flex items-center justify-between gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                      checked
+                        ? 'bg-indigo-600/10 border-indigo-500/50 text-slate-100'
+                        : 'bg-[#0b0d11] border-slate-800/80 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span
+                        className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                          checked
+                            ? 'bg-indigo-600 border-indigo-500 text-white'
+                            : 'border-slate-700 bg-[#12151c]'
+                        }`}
+                      >
+                        {checked && <Check className="w-3 h-3" />}
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleOne(clip.id)}
+                        className="sr-only"
+                      />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium truncate">
+                          #{idx + 1} · {clip.title}
+                        </p>
+                        <p className="text-[11px] font-mono-tabular text-slate-400">
+                          {outDur.toFixed(1)}s · {clip.editorSettings.ratio}
+                          {clip.editorSettings.silenceCutEnabled ? ' · Sin silencios' : ''}
+                          {clip.editorSettings.hookEnabled && clip.editorSettings.hookText
+                            ? ' · Gancho'
+                            : ''}
+                        </p>
+                      </div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isDemo}
+                onClick={() => setEngine('ffmpeg-fast')}
+                className={`p-3 rounded-lg border text-left transition-colors cursor-pointer disabled:opacity-40 ${
+                  engine === 'ffmpeg-fast'
+                    ? 'bg-indigo-600/15 border-indigo-500 text-slate-100'
+                    : 'bg-[#0b0d11] border-slate-800 text-slate-300 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs font-semibold">
+                  <span>FFmpeg Nativo</span>
+                  <span className="text-[10px] text-emerald-400">Recomendado PC</span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  {isDesktop
+                    ? 'Lee desde disco sin recargar y guarda en Descargas\\ShortStudio\\Lotes.'
+                    : 'Renderizado rápido en servidor con cortes de silencio y gancho.'}
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setEngine('mp4-h264')}
+                className={`p-3 rounded-lg border text-left transition-colors cursor-pointer ${
+                  engine === 'mp4-h264'
+                    ? 'bg-indigo-600/15 border-indigo-500 text-slate-100'
+                    : 'bg-[#0b0d11] border-slate-800 text-slate-300 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs font-semibold">
+                  <span>Estudio 1:1</span>
+                  <span className="text-[10px] text-indigo-400">WebCodecs</span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Máxima fidelidad en fuentes, píldoras karaoke y seguimiento facial.
+                </p>
+              </button>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 rounded-lg text-xs font-medium text-slate-300 bg-[#191d26] border border-slate-800 hover:bg-[#222733] cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!canStart}
+                onClick={() => onStartBatch(selectedIds, engine)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-45 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Exportar {selectedIds.length} Clips (.MP4)</span>
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+

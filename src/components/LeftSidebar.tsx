@@ -1,14 +1,17 @@
-import { LoaderCircle, RotateCcw, ScanFace, Trash2 } from 'lucide-react';
+import { LoaderCircle, RotateCcw, ScanFace, Scissors, Sparkles, Trash2 } from 'lucide-react';
 import {
   EditorSettings,
   FitMode,
+  HookStyle,
   LeftTab,
   ProgressPos,
   SubBgMode,
   SubMode,
   TargetRatio,
+  TransitionInType,
   WatermarkPos,
 } from '../types/editor';
+import { getEffectiveSourceDuration } from '../utils/clipTiming';
 
 interface LeftSidebarProps {
   activeTab: LeftTab;
@@ -21,10 +24,12 @@ interface LeftSidebarProps {
   trackingFaces: boolean;
   faceTrackProgress: number;
   faceTrackStatus: string;
+  analyzingAudio?: boolean;
   onUpdateSetting: <K extends keyof EditorSettings>(key: K, value: EditorSettings[K]) => void;
   onApplySubtitlePreset: (patch: Partial<EditorSettings>) => void;
   onTrimStartChange: (val: number) => void;
   onTrimEndChange: (val: number) => void;
+  onDetectSilences?: () => void;
   onResetFraming: () => void;
   onResetColor: () => void;
   onRemoveBgm: () => void;
@@ -43,10 +48,12 @@ export function LeftSidebar({
   trackingFaces,
   faceTrackProgress,
   faceTrackStatus,
+  analyzingAudio = false,
   onUpdateSetting,
   onApplySubtitlePreset,
   onTrimStartChange,
   onTrimEndChange,
+  onDetectSilences,
   onResetFraming,
   onResetColor,
   onRemoveBgm,
@@ -457,6 +464,104 @@ export function LeftSidebar({
             </section>
 
             <section className="p-4 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xs font-semibold text-slate-300">
+                  Corte Automático de Silencios
+                </h2>
+                <input
+                  type="checkbox"
+                  checked={Boolean(settings.silenceCutEnabled)}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    onUpdateSetting('silenceCutEnabled', checked);
+                    if (
+                      checked &&
+                      (!settings.speechSegments || settings.speechSegments.length === 0) &&
+                      hasMediaOrDemo
+                    ) {
+                      onDetectSilences?.();
+                    }
+                  }}
+                  className="w-4 h-4 accent-indigo-500 cursor-pointer"
+                  aria-label="Activar corte automático de silencios"
+                />
+              </div>
+
+              {onDetectSilences && (
+                <button
+                  type="button"
+                  disabled={!hasMediaOrDemo || analyzingAudio}
+                  onClick={onDetectSilences}
+                  className="w-full inline-flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-medium text-slate-100 bg-[#191d26] border border-slate-800 hover:bg-[#222733] disabled:opacity-45 cursor-pointer"
+                >
+                  {analyzingAudio ? (
+                    <LoaderCircle className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                  ) : (
+                    <Scissors className="w-3.5 h-3.5 text-indigo-400" />
+                  )}
+                  <span>
+                    {analyzingAudio
+                      ? 'Analizando pausas...'
+                      : settings.speechSegments && settings.speechSegments.length > 0
+                      ? 'Recalcular Pausas de Silencio'
+                      : 'Detectar Silencios en Audio'}
+                  </span>
+                </button>
+              )}
+
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-300">Sensibilidad</span>
+                  <span className="font-mono-tabular text-indigo-400">
+                    {settings.silenceThresholdDb ?? -34} dB
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={-45}
+                  max={-22}
+                  step={1}
+                  value={settings.silenceThresholdDb ?? -34}
+                  onChange={(e) =>
+                    onUpdateSetting('silenceThresholdDb', Number(e.target.value))
+                  }
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-300">Pausa mínima</span>
+                  <span className="font-mono-tabular text-indigo-400">
+                    {(settings.silenceMinSec ?? 0.45).toFixed(2)}s
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0.25}
+                  max={1.2}
+                  step={0.05}
+                  value={settings.silenceMinSec ?? 0.45}
+                  onChange={(e) => onUpdateSetting('silenceMinSec', Number(e.target.value))}
+                />
+              </div>
+
+              {settings.silenceCutEnabled &&
+                settings.speechSegments &&
+                settings.speechSegments.length > 0 && (
+                  <p className="text-[11px] font-mono-tabular text-emerald-400">
+                    {settings.speechSegments.length} bloques de voz · -
+                    {Math.max(
+                      0,
+                      settings.trimEnd -
+                        settings.trimStart -
+                        getEffectiveSourceDuration(settings)
+                    ).toFixed(1)}
+                    s silencios recortados
+                  </p>
+                )}
+            </section>
+
+            <section className="p-4 flex flex-col gap-3">
               <h2 className="text-xs font-semibold text-slate-300">Barra de Retención</h2>
               <label className="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
                 <span>Mostrar barra de progreso</span>
@@ -512,6 +617,115 @@ export function LeftSidebar({
                   </button>
                 ))}
               </div>
+            </section>
+
+            <section className="p-4 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <h2 className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-300">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Gancho Superior y Transición</span>
+                </h2>
+                <input
+                  type="checkbox"
+                  checked={Boolean(settings.hookEnabled)}
+                  onChange={(e) => onUpdateSetting('hookEnabled', e.target.checked)}
+                  className="w-4 h-4 accent-indigo-500 cursor-pointer"
+                  aria-label="Activar título gancho superior"
+                />
+              </div>
+
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] text-slate-400">Transición de entrada</span>
+                <select
+                  value={settings.transitionIn || 'none'}
+                  onChange={(e) =>
+                    onUpdateSetting('transitionIn', e.target.value as TransitionInType)
+                  }
+                  className="bg-[#0b0d11] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="none">Sin transición</option>
+                  <option value="zoom-punch">Zoom Punch (TikTok)</option>
+                  <option value="slide-up">Deslizar hacia arriba</option>
+                  <option value="fade">Fundido suave</option>
+                </select>
+              </label>
+
+              {settings.hookEnabled && (
+                <div className="flex flex-col gap-2.5 pt-1 border-t border-slate-800/80">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-slate-400">Texto del gancho superior</span>
+                    <input
+                      type="text"
+                      value={settings.hookText || ''}
+                      onChange={(e) => onUpdateSetting('hookText', e.target.value)}
+                      placeholder="Ej: El secreto que nadie te cuenta"
+                      className="w-full bg-[#0b0d11] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                    />
+                  </label>
+
+                  <div className="grid grid-cols-2 gap-1.5 bg-[#0b0d11] p-1 rounded-lg border border-slate-800/80">
+                    {(
+                      [
+                        { id: 'white-box', label: 'Caja Blanca', bg: '#ffffff', txt: '#0f172a' },
+                        { id: 'dark-neon', label: 'Oscuro Neón', bg: '#0f172a', txt: '#ffffff' },
+                        { id: 'red-hook', label: 'Alerta Roja', bg: '#e11d48', txt: '#ffffff' },
+                        { id: 'minimal-clean', label: 'Texto Limpio', bg: '#000000', txt: '#ffffff' },
+                      ] as Array<{ id: HookStyle; label: string; bg: string; txt: string }>
+                    ).map((st) => (
+                      <button
+                        key={st.id}
+                        type="button"
+                        onClick={() =>
+                          onApplySubtitlePreset({
+                            hookStyle: st.id,
+                            hookBgColor: st.bg,
+                            hookTextColor: st.txt,
+                          })
+                        }
+                        className={`py-1.5 px-2 rounded-md text-[11px] font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                          (settings.hookStyle || 'white-box') === st.id
+                            ? 'bg-indigo-600 text-white'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {st.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="flex flex-col gap-1">
+                      <span className="text-[11px] text-slate-400">Duración</span>
+                      <select
+                        value={settings.hookDurationSec ?? 3.5}
+                        onChange={(e) =>
+                          onUpdateSetting('hookDurationSec', Number(e.target.value))
+                        }
+                        className="bg-[#0b0d11] border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                      >
+                        <option value={3.5}>Primeros 3.5s</option>
+                        <option value={5}>Primeros 5s</option>
+                        <option value={0}>Todo el clip</option>
+                      </select>
+                    </label>
+                    <div className="flex flex-col gap-1 justify-center">
+                      <div className="flex justify-between text-[11px]">
+                        <span className="text-slate-400">Altura</span>
+                        <span className="font-mono-tabular text-indigo-400">
+                          {settings.hookY ?? 14}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={8}
+                        max={36}
+                        value={settings.hookY ?? 14}
+                        onChange={(e) => onUpdateSetting('hookY', Number(e.target.value))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </section>
 
             <section className="p-4 flex flex-col gap-3">

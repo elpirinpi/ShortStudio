@@ -1,4 +1,9 @@
 import { EditorSettings, getCanvasDimensions, SubtitleCue } from '../types/editor';
+import {
+  getEffectiveOutputDuration,
+  getEffectiveSpeechSegments,
+  sourceTimeToOutputTime,
+} from './clipTiming';
 import { interpolateFaceAtTime } from './faceTracker';
 import { hexToRgba, isColorBright } from './srt';
 

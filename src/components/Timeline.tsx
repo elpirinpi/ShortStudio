@@ -1,5 +1,6 @@
-import React, { useMemo, useRef } from 'react';
-import { SubtitleCue } from '../types/editor';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { SpeechSegment, SubtitleCue } from '../types/editor';
+import { getEffectiveOutputDuration } from '../utils/clipTiming';
 import { formatTime } from '../utils/srt';
 
 interface TimelineProps {
@@ -12,6 +13,10 @@ interface TimelineProps {
   bgmName: string;
   subtitles: SubtitleCue[];
   selectedSubId: number | null;
+  audioPeaks?: number[];
+  waveformLoading?: boolean;
+  silenceCutEnabled?: boolean;
+  speechSegments?: SpeechSegment[];
   onSeek: (time: number) => void;
   onSelectSub: (id: number) => void;
   onMoveSub: (id: number, start: number, end: number) => void;
@@ -29,6 +34,10 @@ export function Timeline({
   bgmName,
   subtitles,
   selectedSubId,
+  audioPeaks,
+  waveformLoading = false,
+  silenceCutEnabled = false,
+  speechSegments,
   onSeek,
   onSelectSub,
   onMoveSub,
@@ -36,6 +45,7 @@ export function Timeline({
   onTrimEndChange,
 }: TimelineProps) {
   const tracksRef = useRef<HTMLDivElement | null>(null);
+  const waveCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const scrubbingRef = useRef(false);
   const trimDragRef = useRef<'start' | 'end' | null>(null);
   const dragCueRef = useRef<{
@@ -50,7 +60,15 @@ export function Timeline({
   const playheadPct = Math.max(0, Math.min(100, (currentTime / safeDur) * 100));
   const trimLeftPct = (trimStart / safeDur) * 100;
   const trimWidthPct = Math.max(0.5, ((trimEnd - trimStart) / safeDur) * 100);
-  const exportDur = Math.max(0, trimEnd - trimStart) / speed;
+  const rawSpanDur = Math.max(0, trimEnd - trimStart) / speed;
+  const exportDur = getEffectiveOutputDuration({
+    trimStart,
+    trimEnd,
+    speed,
+    silenceCutEnabled,
+    speechSegments,
+  });
+  const savedSec = Math.max(0, rawSpanDur - exportDur);
 
   const rulerTicks = useMemo(() => {
     const count = 6;
@@ -63,24 +81,107 @@ export function Timeline({
     return ticks;
   }, [safeDur]);
 
-  const timeFromClientX = (clientX: number) => {
+  const snapTime = (rawTime: number, clientWidth: number): number => {
+    const pxTolerance = 6;
+    const secTol = (pxTolerance / Math.max(120, clientWidth)) * safeDur;
+    const anchors: number[] = [trimStart, trimEnd];
+    for (const s of subtitles) {
+      anchors.push(s.start, s.end);
+    }
+    if (silenceCutEnabled && speechSegments) {
+      for (const seg of speechSegments) {
+        anchors.push(seg.start, seg.end);
+      }
+    }
+    let best = rawTime;
+    let bestDist = secTol;
+    for (const a of anchors) {
+      const d = Math.abs(rawTime - a);
+      if (d < bestDist) {
+        bestDist = d;
+        best = a;
+      }
+    }
+    return best;
+  };
+
+  useEffect(() => {
+    const canvas = waveCanvasRef.current;
+    if (!canvas) return;
+
+    const drawWaveform = () => {
+      const rect = canvas.getBoundingClientRect();
+      const w = Math.max(1, Math.round(rect.width));
+      const h = Math.max(1, Math.round(rect.height));
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
+      }
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+
+      const peaks = audioPeaks;
+      if (!peaks || peaks.length === 0) return;
+
+      const midY = h / 2;
+      const maxAmpH = Math.max(4, h * 0.42);
+      const barCount = Math.max(40, Math.min(peaks.length, Math.floor(w / 3)));
+
+      for (let i = 0; i < barCount; i++) {
+        const ratio = (i + 0.5) / barCount;
+        const t = ratio * safeDur;
+        const peakIdx = Math.min(peaks.length - 1, Math.floor(ratio * peaks.length));
+        const val = Math.max(0.06, Math.min(1, peaks[peakIdx] || 0));
+        const inTrim = t >= trimStart && t <= trimEnd;
+
+        let isKept = true;
+        if (inTrim && silenceCutEnabled && speechSegments && speechSegments.length > 0) {
+          isKept = speechSegments.some((seg) => t >= seg.start && t <= seg.end);
+        }
+
+        if (!inTrim) {
+          ctx.fillStyle = 'rgba(148, 163, 184, 0.18)';
+        } else if (!isKept) {
+          ctx.fillStyle = 'rgba(244, 63, 94, 0.36)';
+        } else {
+          ctx.fillStyle = 'rgba(129, 140, 248, 0.78)';
+        }
+
+        const x = (i / barCount) * w;
+        const barW = Math.max(1.5, w / barCount - 1);
+        const bh = Math.max(2, val * maxAmpH * 2);
+        ctx.fillRect(x, midY - bh / 2, barW, bh);
+      }
+    };
+
+    drawWaveform();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(drawWaveform) : null;
+    if (ro) ro.observe(canvas);
+    return () => ro?.disconnect();
+  }, [audioPeaks, safeDur, trimStart, trimEnd, silenceCutEnabled, speechSegments]);
+
+  const timeFromClientX = (clientX: number, enableSnap = false) => {
     const el = tracksRef.current;
     if (!el) return 0;
     const rect = el.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    return ratio * safeDur;
+    const t = ratio * safeDur;
+    return enableSnap ? snapTime(t, rect.width) : t;
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (trimDragRef.current) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     scrubbingRef.current = true;
-    onSeek(timeFromClientX(e.clientX));
+    onSeek(timeFromClientX(e.clientX, true));
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!scrubbingRef.current) return;
-    onSeek(timeFromClientX(e.clientX));
+    onSeek(timeFromClientX(e.clientX, false));
   };
 
   const handlePointerUp = () => {
@@ -100,7 +201,7 @@ export function Timeline({
     const edge = trimDragRef.current;
     if (!edge) return;
     e.stopPropagation();
-    const t = timeFromClientX(e.clientX);
+    const t = timeFromClientX(e.clientX, true);
     if (edge === 'start') {
       onTrimStartChange(Math.max(0, Math.min(trimEnd - 0.3, t)));
     } else {
@@ -150,10 +251,15 @@ export function Timeline({
   };
 
   return (
-    <footer className="h-[168px] shrink-0 bg-[#12151c] border-t border-slate-800/90 flex flex-col">
+    <footer className="h-[176px] shrink-0 bg-[#12151c] border-t border-slate-800/90 flex flex-col">
       <div className="h-8 px-4 border-b border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-        <span>
-          Línea de tiempo (arrastra los bordes del video para recortar o mueve bloques de subtítulos)
+        <span className="truncate pr-3">
+          Línea de tiempo{' '}
+          {waveformLoading
+            ? '· Analizando onda de audio...'
+            : audioPeaks?.length
+            ? '· Onda de audio y ajuste magnético activos'
+            : '(arrastra bordes del clip o bloques de subtítulos)'}
         </span>
         <div className="flex items-center gap-2 font-mono-tabular whitespace-nowrap">
           <span>
@@ -161,6 +267,12 @@ export function Timeline({
           </span>
           <span aria-hidden="true">·</span>
           <span>Duración final: {exportDur.toFixed(1)}s</span>
+          {savedSec >= 0.2 && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="text-emerald-400">-{savedSec.toFixed(1)}s silencios</span>
+            </>
+          )}
           <span aria-hidden="true">·</span>
           <span className={exportDur > 60 ? 'text-amber-400 font-medium' : 'text-slate-400'}>
             {exportDur > 60 ? 'Supera 60s (límite Shorts)' : 'Apto para Shorts y TikTok'}
@@ -197,13 +309,17 @@ export function Timeline({
             ))}
           </div>
 
-          {/* Video Trim Track */}
-          <div className="h-7 bg-[#0b0d11] border border-slate-800 rounded-md relative overflow-hidden">
-            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-400 z-10 pointer-events-none">
-              Video
+          {/* Video Trim + Audio Waveform Track */}
+          <div className="h-9 bg-[#0b0d11] border border-slate-800 rounded-md relative overflow-hidden">
+            <canvas
+              ref={waveCanvasRef}
+              className="absolute inset-0 w-full h-full pointer-events-none"
+            />
+            <span className="absolute left-2.5 top-1 text-[10px] font-semibold text-slate-300/90 z-10 pointer-events-none drop-shadow">
+              Video y Onda
             </span>
             <div
-              className="absolute top-0 bottom-0 bg-indigo-500/20 border-t border-b border-indigo-400/60"
+              className="absolute top-0 bottom-0 bg-indigo-500/12 border-t border-b border-indigo-400/65"
               style={{ left: `${trimLeftPct}%`, width: `${trimWidthPct}%` }}
             >
               <button
@@ -212,9 +328,9 @@ export function Timeline({
                 onPointerDown={(e) => handleTrimPointerDown(e, 'start')}
                 onPointerMove={handleTrimPointerMove}
                 onPointerUp={handleTrimPointerUp}
-                className="absolute left-0 top-0 bottom-0 w-2.5 bg-indigo-500 hover:bg-indigo-400 cursor-ew-resize flex items-center justify-center"
+                className="absolute left-0 top-0 bottom-0 w-2.5 bg-indigo-500 hover:bg-indigo-400 cursor-ew-resize flex items-center justify-center z-20"
               >
-                <span className="w-0.5 h-3 bg-white/80 rounded-full" />
+                <span className="w-0.5 h-4 bg-white/80 rounded-full" />
               </button>
               <button
                 type="button"
@@ -222,9 +338,9 @@ export function Timeline({
                 onPointerDown={(e) => handleTrimPointerDown(e, 'end')}
                 onPointerMove={handleTrimPointerMove}
                 onPointerUp={handleTrimPointerUp}
-                className="absolute right-0 top-0 bottom-0 w-2.5 bg-indigo-500 hover:bg-indigo-400 cursor-ew-resize flex items-center justify-center"
+                className="absolute right-0 top-0 bottom-0 w-2.5 bg-indigo-500 hover:bg-indigo-400 cursor-ew-resize flex items-center justify-center z-20"
               >
-                <span className="w-0.5 h-3 bg-white/80 rounded-full" />
+                <span className="w-0.5 h-4 bg-white/80 rounded-full" />
               </button>
             </div>
           </div>
@@ -259,12 +375,12 @@ export function Timeline({
           </div>
 
           {/* BGM Track */}
-          <div className="h-7 bg-[#0b0d11] border border-slate-800 rounded-md relative overflow-hidden">
+          <div className="h-6 bg-[#0b0d11] border border-slate-800 rounded-md relative overflow-hidden">
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-400 z-10 pointer-events-none">
               Música
             </span>
             {hasBgm && (
-              <div className="absolute inset-1 bg-emerald-500/20 border border-emerald-500/50 rounded flex items-center pl-16 pr-2 text-[10px] text-emerald-200 truncate">
+              <div className="absolute inset-0.5 bg-emerald-500/20 border border-emerald-500/50 rounded flex items-center pl-16 pr-2 text-[10px] text-emerald-200 truncate">
                 {bgmName}
               </div>
             )}
