@@ -23,10 +23,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
 
       - name: Install root dependencies
-        run: npm install
+        run: npm install --no-audit --no-fund
 
       - name: Build frontend and server bundle
         env:
@@ -42,9 +41,11 @@ jobs:
         run: |
           if (Test-Path electron/dist) { Remove-Item -Recurse -Force electron/dist }
           Copy-Item -Recurse -Force dist electron/dist
-          npm --prefix electron install
+          npm --prefix electron install --no-audit --no-fund
 
       - name: Package Windows .exe (Installer + Portable)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npm --prefix electron run dist:win
 
       - name: Upload Windows .exe Artifacts
@@ -55,17 +56,20 @@ jobs:
             release/KellyClipAi-Studio-Setup-*.exe
             release/KellyClipAi-Studio-Portable-*.exe
 
-      - name: Publish GitHub Release on Tag
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish GitHub Release with Windows .exe
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.0' }}
+          name: KellyClipAi Studio ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.0' }}
+          make_latest: true
+          prerelease: false
           files: |
             release/KellyClipAi-Studio-Setup-*.exe
             release/KellyClipAi-Studio-Portable-*.exe
           body: |
-            **KellyClipAi Studio (ShortStudio)** para Windows x64.
+            **KellyClipAi Studio (ShortStudio)** para Windows x64 (ejecución 100% local sin hosting).
             Desarrollado por **Kelly Benjamin De La Cruz**.
 
             Incluye:
-            - `KellyClipAi-Studio-Portable-*.exe` (ejecutable directo sin instalación)
-            - `KellyClipAi-Studio-Setup-*.exe` (instalador completo para Windows)
+            - `KellyClipAi-Studio-Portable-1.0.0.exe` (ejecutable directo sin instalación)
+            - `KellyClipAi-Studio-Setup-1.0.0.exe` (instalador completo para Windows)

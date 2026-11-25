@@ -22,9 +22,9 @@ Editor profesional de video vertical **9:16** para YouTube Shorts, TikTok y Reel
 
 Este proyecto incluye el flujo de **GitHub Actions** (`.github/workflows/build-windows-exe.yml`).
 
-1. Crea un repositorio en GitHub y sube este proyecto (`git init`, `git add .`, `git commit -m "Initial commit"`, `git push -u origin main`).
+1. Sube o sincroniza este proyecto con tu repositorio de GitHub (`main`).
 2. Agrega `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` en **GitHub → Settings → Secrets and variables → Actions** para que el `.exe` compilado en la nube incluya la conexión a Supabase.
-3. Publica una etiqueta de versión (`git tag v1.0.0 && git push origin v1.0.0`) para que GitHub Actions compile y publique el **Release** automáticamente con:
+3. Cada `push` o sincronización a `main` compila y publica automáticamente el **Release** en GitHub con:
    - `KellyClipAi-Studio-Portable-1.0.0.exe` (ejecutable portátil sin instalación)
    - `KellyClipAi-Studio-Setup-1.0.0.exe` (instalador completo para Windows)
 

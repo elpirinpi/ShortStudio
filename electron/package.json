@@ -22,11 +22,7 @@
     "appId": "com.kellybenjamin.kellyclipaistudio",
     "productName": "KellyClipAi Studio",
     "copyright": "Copyright © 2026 Kelly Benjamin De La Cruz",
-    "asar": true,
-    "asarUnpack": [
-      "dist/**/*",
-      "dist-server/**/*"
-    ],
+    "asar": false,
     "directories": {
       "output": "../release"
     },
