@@ -44,6 +44,12 @@ let activeMediaDir: string | null = process.env.SHORTSTUDIO_MEDIA_DIR || null;
 let cachedYtDlpPath: string | null = null;
 let cachedFfmpegPath: string | null = null;
 let cachedDenoPath: string | null = null;
+let cachedFfprobePath: string | null = null;
+// Runtime preparation is attempted only once per process: a failed
+// download of Deno/FFmpeg is remembered instead of being retried (and
+// re-downloaded) on every download attempt.
+let denoDownloadFailed = false;
+let ffmpegDownloadFailed = false;
 
 function getRuntimeBinDir(): string {
   if (activeBinDir) return activeBinDir;
@@ -107,6 +113,144 @@ async function ensureYtDlp(): Promise<string> {
   return targetBin;
 }
 
+
+async function extractZipWindows(zipPath: string, destDir: string): Promise<boolean> {
+  try {
+    await fs.promises.mkdir(destDir, { recursive: true });
+  } catch {
+    // ignore: the extractors below will surface a real failure
+  }
+  // First choice: tar.exe (bsdtar), included in Windows 10 1803+ and
+  // Windows 11. It extracts ZIP files far faster and more reliably than
+  // Expand-Archive from Windows PowerShell 5.1, which was the main cause
+  // of the long hang on Windows 10.
+  try {
+    await execFileAsync('tar.exe', ['-xf', zipPath, '-C', destDir], { timeout: 120000 });
+    return true;
+  } catch {
+    // fall through to the PowerShell fallback
+  }
+  try {
+    await execFileAsync(
+      'powershell',
+      [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        `Expand-Archive -LiteralPath '${zipPath.replace(/'/g, "''")}' -DestinationPath '${destDir.replace(/'/g, "''")}' -Force`,
+      ],
+      { timeout: 120000 }
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function verifyBinaryResponds(bin: string): Promise<boolean> {
+  try {
+    await execFileAsync(bin, ['-version'], { timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveFfprobePathSync(ffmpegPath?: string | null): string | null {
+  if (cachedFfprobePath && fs.existsSync(cachedFfprobePath)) {
+    return cachedFfprobePath;
+  }
+  const binName = IS_WINDOWS ? 'ffprobe.exe' : 'ffprobe';
+  const resourcesPath = (process as unknown as { resourcesPath?: string }).resourcesPath;
+  const candidates: string[] = [];
+  if (ffmpegPath && ffmpegPath.includes(path.sep)) {
+    candidates.push(path.join(path.dirname(ffmpegPath), binName));
+  }
+  candidates.push(path.join(getRuntimeBinDir(), binName));
+  if (resourcesPath) candidates.push(path.join(resourcesPath, 'bin', binName));
+  candidates.push(path.resolve(process.cwd(), 'bin', binName));
+  if (IS_WINDOWS) {
+    candidates.push(
+      path.join(process.env.LOCALAPPDATA || os.tmpdir(), 'ShortStudioConnector', binName)
+    );
+  } else {
+    candidates.push('/usr/bin/ffprobe', '/usr/local/bin/ffprobe');
+  }
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      cachedFfprobePath = candidate;
+      return candidate;
+    }
+  }
+  return null;
+}
+
+async function resolveFfprobePath(ffmpegPath?: string | null): Promise<string | null> {
+  const sync = resolveFfprobePathSync(ffmpegPath);
+  if (sync) return sync;
+  try {
+    if (IS_WINDOWS) {
+      const { stdout } = await execFileAsync('where.exe', ['ffprobe'], { timeout: 4000 });
+      const first = stdout
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .find(Boolean);
+      if (first && fs.existsSync(first)) {
+        cachedFfprobePath = first;
+        return first;
+      }
+    } else if (await verifyBinaryResponds('ffprobe')) {
+      return 'ffprobe';
+    }
+  } catch {
+    // ffprobe stays unresolved; callers decide how strict to be
+  }
+  return null;
+}
+
+// FFmpeg is mandatory when yt-dlp downloads separate video+audio tracks:
+// without it the tracks are never merged. A real, existing ffmpeg.exe path
+// is accepted; the generic 'ffmpeg' name is only trusted when the binary
+// actually responds.
+async function verifyFfmpegForMerge(
+  ffmpegPath: string
+): Promise<{ ffmpegPath: string; ffprobePath: string | null } | null> {
+  if (ffmpegPath && ffmpegPath !== 'ffmpeg') {
+    if (!fs.existsSync(ffmpegPath)) return null;
+    const ffprobePath = await resolveFfprobePath(ffmpegPath);
+    return { ffmpegPath, ffprobePath };
+  }
+  if (await verifyBinaryResponds('ffmpeg')) {
+    const ffprobePath = await resolveFfprobePath(null);
+    return { ffmpegPath: 'ffmpeg', ffprobePath };
+  }
+  return null;
+}
+
+async function fileHasAudioStream(ffprobePath: string, filePath: string): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync(
+      ffprobePath,
+      [
+        '-v',
+        'error',
+        '-select_streams',
+        'a',
+        '-show_entries',
+        'stream=codec_type',
+        '-of',
+        'csv=p=0',
+        filePath,
+      ],
+      { timeout: 30000 }
+    );
+    return stdout.split(/\r?\n/).some((l) => l.trim() === 'audio');
+  } catch {
+    return false;
+  }
+}
+
 function resolveFfmpegPathSync(): string | null {
   if (cachedFfmpegPath && fs.existsSync(cachedFfmpegPath)) {
     return cachedFfmpegPath;
@@ -157,6 +301,12 @@ async function ensureFfmpeg(): Promise<string> {
     // fallback to downloading portable ffmpeg.exe
   }
 
+  if (ffmpegDownloadFailed) {
+    // Already tried and failed in this process: do not re-download the
+    // FFmpeg ZIP on every download attempt.
+    return 'ffmpeg';
+  }
+
   const binDir = getRuntimeBinDir();
   fs.mkdirSync(binDir, { recursive: true });
   const targetExe = path.join(binDir, 'ffmpeg.exe');
@@ -168,19 +318,16 @@ async function ensureFfmpeg(): Promise<string> {
       redirect: 'follow',
       signal: AbortSignal.timeout(120000),
     });
-    if (!resp.ok || !resp.body) return 'ffmpeg';
+    if (!resp.ok || !resp.body) {
+      ffmpegDownloadFailed = true;
+      return 'ffmpeg';
+    }
     await fs.promises.writeFile(tmpZip, Buffer.from(await resp.arrayBuffer()));
-    await execFileAsync(
-      'powershell',
-      [
-        '-NoProfile',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-Command',
-        `Expand-Archive -LiteralPath '${tmpZip.replace(/'/g, "''")}' -DestinationPath '${tmpExtract.replace(/'/g, "''")}' -Force`,
-      ],
-      { timeout: 120000 }
-    );
+    const extractedFfmpegZip = await extractZipWindows(tmpZip, tmpExtract);
+    if (!extractedFfmpegZip) {
+      ffmpegDownloadFailed = true;
+      return 'ffmpeg';
+    }
 
     const findFfmpegExe = (dir: string): string | null => {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -198,10 +345,24 @@ async function ensureFfmpeg(): Promise<string> {
     const found = findFfmpegExe(tmpExtract);
     if (found) {
       await fs.promises.copyFile(found, targetExe);
+      // The FFmpeg builds ship ffprobe.exe next to ffmpeg.exe: keep it
+      // too, it is needed to verify the merged file really has audio.
+      const siblingFfprobe = path.join(path.dirname(found), 'ffprobe.exe');
+      if (fs.existsSync(siblingFfprobe)) {
+        const targetFfprobe = path.join(binDir, 'ffprobe.exe');
+        try {
+          await fs.promises.copyFile(siblingFfprobe, targetFfprobe);
+          cachedFfprobePath = targetFfprobe;
+        } catch {
+          // ffprobe can still be resolved later from other locations
+        }
+      }
       cachedFfmpegPath = targetExe;
       return targetExe;
     }
+    ffmpegDownloadFailed = true;
   } catch {
+    ffmpegDownloadFailed = true;
     // ignore and fallback
   } finally {
     fs.promises.rm(tmpZip, { force: true }).catch(() => {});
@@ -227,6 +388,12 @@ async function ensureDenoOnWindows(): Promise<string | null> {
     }
   }
 
+  if (denoDownloadFailed) {
+    // Deno is optional: a failed preparation is remembered for this
+    // process instead of being retried on every download attempt.
+    return null;
+  }
+
   fs.mkdirSync(binDir, { recursive: true });
   const targetDeno = path.join(binDir, 'deno.exe');
   const tmpZip = path.join(os.tmpdir(), `ss_deno_${Date.now()}.zip`);
@@ -235,28 +402,27 @@ async function ensureDenoOnWindows(): Promise<string | null> {
       redirect: 'follow',
       signal: AbortSignal.timeout(60000),
     });
-    if (!resp.ok || !resp.body) return null;
+    if (!resp.ok || !resp.body) {
+      denoDownloadFailed = true;
+      return null;
+    }
     await fs.promises.writeFile(tmpZip, Buffer.from(await resp.arrayBuffer()));
-    await execFileAsync(
-      'powershell',
-      [
-        '-NoProfile',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-Command',
-        `Expand-Archive -LiteralPath '${tmpZip.replace(/'/g, "''")}' -DestinationPath '${binDir.replace(/'/g, "''")}' -Force`,
-      ],
-      { timeout: 60000 }
-    );
+    const extractedDenoZip = await extractZipWindows(tmpZip, binDir);
+    if (!extractedDenoZip) {
+      denoDownloadFailed = true;
+      return null;
+    }
     if (fs.existsSync(targetDeno)) {
       cachedDenoPath = targetDeno;
       return targetDeno;
     }
   } catch {
+    denoDownloadFailed = true;
     // optional
   } finally {
     fs.promises.rm(tmpZip, { force: true }).catch(() => {});
   }
+  denoDownloadFailed = true;
   return null;
 }
 
@@ -446,7 +612,7 @@ async function runYtDlpDownload(
     ];
 
     if (IS_WINDOWS) {
-      onProgress?.(6, 'Verificando runtime Deno / FFmpeg...');
+      onProgress?.(5, 'Verificando runtime Deno (opcional)...');
       const denoExe = await ensureDenoOnWindows();
       if (denoExe) {
         args.push('--js-runtimes', `deno:${denoExe}`, '--remote-components', 'ejs:github');
@@ -455,10 +621,23 @@ async function runYtDlpDownload(
       args.push('--js-runtimes', `node:${process.execPath}`);
     }
 
+    onProgress?.(6, 'Verificando FFmpeg (necesario para unir video y audio)...');
     const ffmpegPath = await ensureFfmpeg();
-    if (ffmpegPath && ffmpegPath !== 'ffmpeg') {
-      args.push('--ffmpeg-location', ffmpegPath);
+    const verifiedFfmpeg = await verifyFfmpegForMerge(ffmpegPath);
+    if (!verifiedFfmpeg) {
+      await cleanup();
+      return {
+        ok: false,
+        reason:
+          'No se pudo preparar FFmpeg en tu PC. FFmpeg es necesario para unir el video y el audio, asi que no se entrego una descarga sin audio. Revisa tu conexion e intentalo de nuevo.',
+      };
     }
+    const mergeFfmpegPath = verifiedFfmpeg.ffmpegPath;
+    const ffprobePath = verifiedFfmpeg.ffprobePath;
+    if (mergeFfmpegPath !== 'ffmpeg') {
+      args.push('--ffmpeg-location', mergeFfmpegPath);
+    }
+    onProgress?.(7, 'Runtime listo. Conectando con YouTube...');
 
     args.push('--', targetUrl);
     onProgress?.(8, 'Conectando y obteniendo formatos de video...');
@@ -630,14 +809,23 @@ async function runYtDlpDownload(
     const lastLine = lines[lines.length - 1] || '';
     const [printedTitle, printedExtractor, printedPath] = lastLine.split('\t');
 
+    // Partial per-format files (clip.f399.mp4, clip.f140.m4a, ...) are
+    // the unmerged video/audio tracks: never deliver one of those.
+    const isPartialFormatFile = (name: string) => /\.f\d+\./i.test(name);
     let downloadedPath = printedPath ? path.resolve(printedPath) : '';
     if (
       !downloadedPath ||
       !downloadedPath.startsWith(workDir + path.sep) ||
-      !fs.existsSync(downloadedPath)
+      !fs.existsSync(downloadedPath) ||
+      isPartialFormatFile(path.basename(downloadedPath))
     ) {
       const entries = await fs.promises.readdir(workDir);
-      const mediaFile = entries.find((name) => /\.(mp4|webm|mkv|mov|m4v)$/i.test(name));
+      const mediaFiles = entries.filter(
+        (name) => /\.(mp4|webm|mkv|mov|m4v)$/i.test(name) && !isPartialFormatFile(name)
+      );
+      // Prefer the merged output file (clip.mp4) over any other candidate.
+      const mediaFile =
+        mediaFiles.find((name) => name.toLowerCase() === 'clip.mp4') || mediaFiles[0];
       if (!mediaFile) {
         await cleanup();
         return {
@@ -656,6 +844,43 @@ async function runYtDlpDownload(
     if (stat.size > MAX_VIDEO_BYTES) {
       await cleanup();
       return { ok: false, reason: 'El video supera el límite de 450 MB.' };
+    }
+
+    // Verify, before reporting success, that the final file really has
+    // an audio stream, and treat a non-zero yt-dlp exit code as an error
+    // unless that verified final file exists.
+    onProgress?.(95, 'Verificando que el video descargado tenga audio...');
+    const effectiveFfprobe = ffprobePath ?? (await resolveFfprobePath(mergeFfmpegPath));
+    let audioVerified = false;
+    if (effectiveFfprobe) {
+      audioVerified = await fileHasAudioStream(effectiveFfprobe, downloadedPath);
+      if (!audioVerified) {
+        await cleanup();
+        return {
+          ok: false,
+          reason:
+            'La descarga termino sin pista de audio: el video y el audio no se pudieron unir. No se entrego el video sin audio.',
+        };
+      }
+    } else if (IS_WINDOWS) {
+      await cleanup();
+      return {
+        ok: false,
+        reason:
+          'No se encontro ffprobe junto a FFmpeg para verificar el audio de la descarga.',
+      };
+    }
+    if (exitCode !== 0 && !audioVerified) {
+      const cleanReason =
+        stderr
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter((l) => l.startsWith('ERROR:'))
+          .join(' ')
+          .replace(/See\s+https?:\/\/\S+.*$/i, '')
+          .trim() || stderr.trim() || `yt-dlp terminó con código ${exitCode}.`;
+      await cleanup();
+      return { ok: false, reason: cleanReason };
     }
 
     const ext = path.extname(downloadedPath).toLowerCase();
