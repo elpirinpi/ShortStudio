@@ -212,6 +212,12 @@ export default function App() {
     });
   }, [notify]);
 
+  const handleOpenInstallerFolder = useCallback(() => {
+    void window.shortStudioDesktop?.openInstallerFolder?.().then((res) => {
+      if (res && !res.ok && res.error) notify(res.error);
+    });
+  }, [notify]);
+
   const handleOpenReleasePage = useCallback(() => {
     void window.shortStudioDesktop?.openReleasePage();
   }, []);
@@ -1617,6 +1623,7 @@ export default function App() {
           updateState={desktopUpdateState}
           onDownload={handleDownloadUpdate}
           onInstall={handleInstallUpdate}
+          onOpenFolder={handleOpenInstallerFolder}
           onOpenRelease={handleOpenReleasePage}
         />
         <div className="flex-1 flex flex-col">
@@ -1632,6 +1639,7 @@ export default function App() {
         updateState={desktopUpdateState}
         onDownload={handleDownloadUpdate}
         onInstall={handleInstallUpdate}
+        onOpenFolder={handleOpenInstallerFolder}
         onOpenRelease={handleOpenReleasePage}
       />
       <TopNav
@@ -1750,6 +1758,7 @@ export default function App() {
           onCheckForUpdates={handleCheckForUpdates}
           onDownloadUpdate={handleDownloadUpdate}
           onInstallUpdate={handleInstallUpdate}
+          onOpenUpdateFolder={handleOpenInstallerFolder}
           onOpenReleasePage={handleOpenReleasePage}
           onUpdateSettings={handleUpdateAppSettings}
           onClearAllData={handleClearAllData}

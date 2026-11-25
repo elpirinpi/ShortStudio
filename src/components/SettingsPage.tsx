@@ -6,6 +6,7 @@ import {
   Copy,
   Download,
   ExternalLink,
+  FolderOpen,
   HardDrive,
   LoaderCircle,
   LogOut,
@@ -62,6 +63,7 @@ interface SettingsPageProps {
   onCheckForUpdates?: () => void;
   onDownloadUpdate?: () => void;
   onInstallUpdate?: () => void;
+  onOpenUpdateFolder?: () => void;
   onOpenReleasePage?: () => void;
   onUpdateSettings: (next: AppSettings) => void;
   onClearAllData: () => Promise<void>;
@@ -78,6 +80,7 @@ export function SettingsPage({
   onCheckForUpdates,
   onDownloadUpdate,
   onInstallUpdate,
+  onOpenUpdateFolder,
   onOpenReleasePage,
   onUpdateSettings,
   onClearAllData,
@@ -353,9 +356,10 @@ export function SettingsPage({
                     {desktopUpdateState.status === 'downloading' &&
                       `Descargando actualización v${desktopUpdateState.latestVersion} (${desktopUpdateState.progress}%)...`}
                     {desktopUpdateState.status === 'downloaded' &&
-                      `Actualización v${desktopUpdateState.latestVersion} descargada y lista para instalar.`}
+                      (desktopUpdateState.error ||
+                        `Actualización v${desktopUpdateState.latestVersion} descargada y lista para instalar.`)}
                     {desktopUpdateState.status === 'installing' &&
-                      'Aplicando actualización y reiniciando...'}
+                      'Abriendo instalador y cerrando KellyClipAi Studio...'}
                     {desktopUpdateState.status === 'error' &&
                       (desktopUpdateState.error || 'No se pudo verificar en GitHub.')}
                     {desktopUpdateState.status === 'idle' &&
@@ -384,14 +388,26 @@ export function SettingsPage({
                   </button>
                 )}
                 {desktopUpdateState.status === 'downloaded' && onInstallUpdate && (
-                  <button
-                    type="button"
-                    onClick={onInstallUpdate}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 cursor-pointer"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Actualizar y reiniciar</span>
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={onInstallUpdate}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 cursor-pointer"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Actualizar y reiniciar</span>
+                    </button>
+                    {onOpenUpdateFolder && (
+                      <button
+                        type="button"
+                        onClick={onOpenUpdateFolder}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] cursor-pointer"
+                      >
+                        <FolderOpen className="w-3.5 h-3.5" />
+                        <span>Abrir carpeta</span>
+                      </button>
+                    )}
+                  </>
                 )}
                 <button
                   type="button"

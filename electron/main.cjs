@@ -210,11 +210,7 @@ async function checkForUpdates({ manual = false } = {}) {
     }
 
     const safeAssetName = path.basename(asset.name);
-    const existingPath = path.join(
-      os.tmpdir(),
-      'kellyclipai-updates',
-      safeAssetName
-    );
+    const existingPath = path.join(getUpdatesDir(), safeAssetName);
     const expectedMinSize =
       typeof asset.size === 'number' && asset.size > 1024 * 1024
         ? asset.size
@@ -265,7 +261,7 @@ async function downloadUpdate() {
   }
 
   activeDownloadPromise = (async () => {
-    const targetDir = path.join(os.tmpdir(), 'kellyclipai-updates');
+    const targetDir = getUpdatesDir();
     fs.mkdirSync(targetDir, { recursive: true });
     const safeName = path.basename(updateState.assetName);
     const partPath = path.join(targetDir, `${safeName}.part`);
@@ -368,24 +364,48 @@ async function downloadUpdate() {
   return activeDownloadPromise;
 }
 
-function escapePsSingleQuoted(value) {
-  return String(value).replace(/'/g, "''");
+function getUpdatesDir() {
+  const baseDir = process.env.LOCALAPPDATA || app.getPath('userData') || os.tmpdir();
+  return path.join(baseDir, 'kellyclipai-updates');
 }
 
-function resolveWindowsPowerShell() {
-  const sysRoot = process.env.SystemRoot || 'C:\\Windows';
-  const candidate = path.join(sysRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-  return fs.existsSync(candidate) ? candidate : 'powershell.exe';
+function clearZoneIdentifier(filePath) {
+  if (process.platform !== 'win32' || !filePath) return;
+  try {
+    const zoneStream = `${filePath}:Zone.Identifier`;
+    if (fs.existsSync(zoneStream)) {
+      fs.unlinkSync(zoneStream);
+    }
+  } catch {
+    // ignore if NTFS ADS stream is absent or protected
+  }
 }
 
-function spawnDetachedChecked(command, args) {
+function stopEmbeddedBackend() {
+  if (checkInterval) {
+    clearInterval(checkInterval);
+    checkInterval = null;
+  }
+  if (serverHandle && serverHandle.server) {
+    try {
+      serverHandle.server.closeAllConnections?.();
+      serverHandle.server.close();
+    } catch {
+      // ignore
+    }
+    serverHandle = null;
+  }
+}
+
+function spawnDetachedVisible(command, args, cwd) {
   return new Promise((resolve) => {
     let settled = false;
     try {
       const child = spawn(command, args, {
+        cwd: cwd || undefined,
         detached: true,
         stdio: 'ignore',
-        windowsHide: true,
+        windowsHide: false,
       });
       child.once('error', (err) => {
         if (!settled) {
@@ -403,7 +423,7 @@ function spawnDetachedChecked(command, args) {
           }
           resolve({ ok: true });
         }
-      }, 150);
+      }, 220);
     } catch (err) {
       if (!settled) {
         settled = true;
@@ -411,6 +431,20 @@ function spawnDetachedChecked(command, args) {
       }
     }
   });
+}
+
+function exitAppCleanly(delayMs = 350) {
+  setTimeout(() => {
+    stopEmbeddedBackend();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        mainWindow.destroy();
+      } catch {
+        // ignore
+      }
+    }
+    app.exit(0);
+  }, delayMs);
 }
 
 async function installDownloadedUpdate() {
@@ -444,130 +478,104 @@ async function installDownloadedUpdate() {
 
   broadcastUpdateState({ status: 'installing', error: null });
 
-  const updatesDir = path.join(os.tmpdir(), 'kellyclipai-updates');
+  const updatesDir = getUpdatesDir();
   fs.mkdirSync(updatesDir, { recursive: true });
-  const logFile = path.join(updatesDir, 'update-helper.log');
+  clearZoneIdentifier(downloadedExe);
+
   const assetIsSetup = /setup/i.test(path.basename(downloadedExe));
   const shouldReplacePortable = Boolean(IS_PORTABLE && PORTABLE_EXE_PATH && !assetIsSetup);
-
-  let launchRes = { ok: false, error: '' };
 
   if (shouldReplacePortable) {
     const targetExe = PORTABLE_EXE_PATH;
     const backupExe = `${targetExe}.bak`;
-    const psScript = [
-      `$ErrorActionPreference = 'Continue'`,
-      `$log = '${escapePsSingleQuoted(logFile)}'`,
-      `$appPid = ${process.pid}`,
-      `$newExe = '${escapePsSingleQuoted(downloadedExe)}'`,
-      `$targetExe = '${escapePsSingleQuoted(targetExe)}'`,
-      `$backupExe = '${escapePsSingleQuoted(backupExe)}'`,
-      `Add-Content -LiteralPath $log -Value ("[" + (Get-Date -Format s) + "] Portable update started PID=" + $appPid)`,
-      `for ($i = 0; $i -lt 40; $i++) {`,
-      `  if (-not (Get-Process -Id $appPid -ErrorAction SilentlyContinue)) { break }`,
-      `  Start-Sleep -Milliseconds 300`,
-      `}`,
-      `Start-Sleep -Milliseconds 900`,
-      `Unblock-File -LiteralPath $newExe -ErrorAction SilentlyContinue`,
-      `$replaced = $false`,
-      `for ($attempt = 0; $attempt -lt 18; $attempt++) {`,
-      `  try {`,
-      `    if (Test-Path -LiteralPath $backupExe) { Remove-Item -LiteralPath $backupExe -Force -ErrorAction Stop }`,
-      `    if (Test-Path -LiteralPath $targetExe) { Move-Item -LiteralPath $targetExe -Destination $backupExe -Force -ErrorAction Stop }`,
-      `    try {`,
-      `      Move-Item -LiteralPath $newExe -Destination $targetExe -Force -ErrorAction Stop`,
-      `    } catch {`,
-      `      Copy-Item -LiteralPath $newExe -Destination $targetExe -Force -ErrorAction Stop`,
-      `      Remove-Item -LiteralPath $newExe -Force -ErrorAction SilentlyContinue`,
-      `    }`,
-      `    if (Test-Path -LiteralPath $backupExe) { Remove-Item -LiteralPath $backupExe -Force -ErrorAction SilentlyContinue }`,
-      `    $replaced = $true`,
-      `    break`,
-      `  } catch {`,
-      `    if ((Test-Path -LiteralPath $backupExe) -and -not (Test-Path -LiteralPath $targetExe)) {`,
-      `      Move-Item -LiteralPath $backupExe -Destination $targetExe -Force -ErrorAction SilentlyContinue`,
-      `    }`,
-      `    Start-Sleep -Milliseconds 500`,
-      `  }`,
-      `}`,
-      `if ($replaced -and (Test-Path -LiteralPath $targetExe)) {`,
-      `  Add-Content -LiteralPath $log -Value ("[" + (Get-Date -Format s) + "] Launching updated portable: " + $targetExe)`,
-      `  Start-Process -FilePath $targetExe`,
-      `} else {`,
-      `  Add-Content -LiteralPath $log -Value ("[" + (Get-Date -Format s) + "] Portable replace skipped; launching downloaded directly: " + $newExe)`,
-      `  Start-Process -FilePath $newExe`,
-      `}`,
+    const cmdPath = path.join(updatesDir, 'apply-portable-update.cmd');
+    const cmdLines = [
+      '@echo off',
+      'chcp 65001 >nul',
+      'title Actualizando KellyClipAi Studio...',
+      'echo Actualizando KellyClipAi Studio, espera un momento...',
+      `set "APP_PID=${process.pid}"`,
+      `set "NEW_EXE=${downloadedExe}"`,
+      `set "TARGET_EXE=${targetExe}"`,
+      `set "BACKUP_EXE=${backupExe}"`,
+      'set /a WAIT_COUNT=0',
+      ':wait_exit',
+      'tasklist /FI "PID eq %APP_PID%" /NH 2>nul | find "%APP_PID%" >nul',
+      'if not errorlevel 1 (',
+      '  set /a WAIT_COUNT+=1',
+      '  if %WAIT_COUNT% lss 45 (',
+      '    ping -n 2 127.0.0.1 >nul',
+      '    goto wait_exit',
+      '  )',
+      ')',
+      'ping -n 2 127.0.0.1 >nul',
+      'set /a TRY_COUNT=0',
+      ':replace_loop',
+      'if exist "%BACKUP_EXE%" del /F /Q "%BACKUP_EXE%" >nul 2>&1',
+      'if exist "%TARGET_EXE%" move /Y "%TARGET_EXE%" "%BACKUP_EXE%" >nul 2>&1',
+      'copy /Y "%NEW_EXE%" "%TARGET_EXE%" >nul 2>&1',
+      'if exist "%TARGET_EXE%" (',
+      '  del /F /Q "%NEW_EXE%" >nul 2>&1',
+      '  if exist "%BACKUP_EXE%" del /F /Q "%BACKUP_EXE%" >nul 2>&1',
+      '  start "" "%TARGET_EXE%"',
+      '  goto done',
+      ')',
+      'if exist "%BACKUP_EXE%" if not exist "%TARGET_EXE%" move /Y "%BACKUP_EXE%" "%TARGET_EXE%" >nul 2>&1',
+      'set /a TRY_COUNT+=1',
+      'if %TRY_COUNT% lss 12 (',
+      '  ping -n 2 127.0.0.1 >nul',
+      '  goto replace_loop',
+      ')',
+      'start "" "%NEW_EXE%"',
+      ':done',
+      '(goto) 2>nul & del "%~f0"',
     ].join('\r\n');
 
-    const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
-    launchRes = await spawnDetachedChecked(resolveWindowsPowerShell(), [
-      '-NoProfile',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-WindowStyle',
-      'Hidden',
-      '-EncodedCommand',
-      encoded,
-    ]);
-  } else {
-    // Launch the Windows installer (.exe) visibly after Electron closes (never hidden /S)
-    const psSetup = [
-      `$ErrorActionPreference = 'Stop'`,
-      `$log = '${escapePsSingleQuoted(logFile)}'`,
-      `$appPid = ${process.pid}`,
-      `$installer = '${escapePsSingleQuoted(downloadedExe)}'`,
-      `Add-Content -LiteralPath $log -Value ("[" + (Get-Date -Format s) + "] Setup launch queued PID=" + $appPid)`,
-      `for ($i = 0; $i -lt 40; $i++) {`,
-      `  if (-not (Get-Process -Id $appPid -ErrorAction SilentlyContinue)) { break }`,
-      `  Start-Sleep -Milliseconds 250`,
-      `}`,
-      `Start-Sleep -Milliseconds 700`,
-      `Unblock-File -LiteralPath $installer -ErrorAction SilentlyContinue`,
-      `Add-Content -LiteralPath $log -Value ("[" + (Get-Date -Format s) + "] Launching Setup: " + $installer)`,
-      `try {`,
-      `  Start-Process -FilePath $installer -WindowStyle Normal`,
-      `} catch {`,
-      `  Add-Content -LiteralPath $log -Value ("[" + (Get-Date -Format s) + "] Setup launch error: " + $_.Exception.Message)`,
-      `}`,
-    ].join('\r\n');
+    fs.writeFileSync(cmdPath, cmdLines, 'utf8');
+    const cmdBin = process.env.ComSpec || 'cmd.exe';
+    const launchRes = await spawnDetachedVisible(
+      cmdBin,
+      ['/d', '/c', 'apply-portable-update.cmd'],
+      updatesDir
+    );
 
-    const encoded = Buffer.from(psSetup, 'utf16le').toString('base64');
-    launchRes = await spawnDetachedChecked(resolveWindowsPowerShell(), [
-      '-NoProfile',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-WindowStyle',
-      'Hidden',
-      '-EncodedCommand',
-      encoded,
-    ]);
-  }
-
-  if (!launchRes.ok) {
-    // Direct Windows ShellExecute fallback so the installer always opens visibly
-    const openErr = await shell.openPath(downloadedExe);
-    if (openErr) {
-      broadcastUpdateState({
-        status: 'downloaded',
-        error: `No se pudo abrir el instalador automáticamente (${openErr}).`,
-      });
-      return {
-        ok: false,
-        error: `No se pudo abrir el instalador (${openErr}).`,
-      };
+    if (launchRes.ok) {
+      stopEmbeddedBackend();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.hide();
+      }
+      exitAppCleanly(250);
+      return { ok: true };
     }
   }
 
-  setTimeout(() => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.destroy();
-    }
-    app.quit();
-    setTimeout(() => {
-      app.exit(0);
-    }, 600);
-  }, 180);
+  // Standard Setup installer (.exe) OR Portable fallback:
+  // Launch directly from Electron's interactive GUI process via Windows ShellExecuteExW (shell.openPath).
+  // This avoids hidden PowerShell -EncodedCommand blocks by Defender/AMSI and always surfaces SmartScreen/UAC/NSIS visibly.
+  stopEmbeddedBackend();
 
+  const openErr = await shell.openPath(downloadedExe);
+  if (openErr) {
+    try {
+      shell.showItemInFolder(downloadedExe);
+    } catch {
+      // ignore
+    }
+    const errMsg = `Windows no permitió abrir el instalador automáticamente (${openErr}). Abrimos la carpeta para que lo ejecutes con doble clic.`;
+    broadcastUpdateState({
+      status: 'downloaded',
+      error: errMsg,
+    });
+    return {
+      ok: false,
+      error: errMsg,
+    };
+  }
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.hide();
+  }
+  exitAppCleanly(450);
   return { ok: true };
 }
 
@@ -698,6 +706,17 @@ ipcMain.handle('updates:get-state', () => ({ ...updateState }));
 ipcMain.handle('updates:check', () => checkForUpdates({ manual: true }));
 ipcMain.handle('updates:download', () => downloadUpdate());
 ipcMain.handle('updates:install', () => installDownloadedUpdate());
+ipcMain.handle('updates:open-folder', async () => {
+  const downloadedExe = updateState.downloadedPath;
+  if (downloadedExe && fs.existsSync(downloadedExe)) {
+    shell.showItemInFolder(downloadedExe);
+    return { ok: true };
+  }
+  const updatesDir = getUpdatesDir();
+  fs.mkdirSync(updatesDir, { recursive: true });
+  const err = await shell.openPath(updatesDir);
+  return err ? { ok: false, error: err } : { ok: true };
+});
 ipcMain.handle('updates:open-release', () => {
   const url = updateState.releaseUrl || `https://github.com/${GITHUB_REPO}/releases`;
   if (isAllowedExternalUrl(url)) {

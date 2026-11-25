@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('shortStudioDesktop', {
   checkForUpdates: () => ipcRenderer.invoke('updates:check'),
   downloadUpdate: () => ipcRenderer.invoke('updates:download'),
   installUpdate: () => ipcRenderer.invoke('updates:install'),
+  openInstallerFolder: () => ipcRenderer.invoke('updates:open-folder'),
   openReleasePage: () => ipcRenderer.invoke('updates:open-release'),
   getRememberedCredentials: () => ipcRenderer.invoke('auth:get-remembered'),
   saveRememberedCredentials: (creds) => ipcRenderer.invoke('auth:save-remembered', creds),

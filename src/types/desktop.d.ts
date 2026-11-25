@@ -35,6 +35,7 @@ export interface ShortStudioDesktopBridge {
   checkForUpdates: () => Promise<DesktopUpdateState>;
   downloadUpdate: () => Promise<DesktopUpdateState>;
   installUpdate: () => Promise<{ ok: boolean; error?: string }>;
+  openInstallerFolder?: () => Promise<{ ok: boolean; error?: string }>;
   openReleasePage: () => Promise<void>;
   getRememberedCredentials?: () => Promise<{ email: string; password: string; encrypted: boolean }>;
   saveRememberedCredentials?: (creds: {

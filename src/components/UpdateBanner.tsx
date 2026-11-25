@@ -1,4 +1,4 @@
-import { Download, ExternalLink, LoaderCircle, RefreshCw, Sparkles, X } from 'lucide-react';
+import { Download, ExternalLink, FolderOpen, LoaderCircle, RefreshCw, Sparkles, X } from 'lucide-react';
 import { useState } from 'react';
 import { DesktopUpdateState } from '../types/desktop';
 
@@ -6,6 +6,7 @@ interface UpdateBannerProps {
   updateState: DesktopUpdateState | null;
   onDownload: () => void;
   onInstall: () => void;
+  onOpenFolder?: () => void;
   onOpenRelease: () => void;
 }
 
@@ -13,6 +14,7 @@ export function UpdateBanner({
   updateState,
   onDownload,
   onInstall,
+  onOpenFolder,
   onOpenRelease,
 }: UpdateBannerProps) {
   const [dismissedVersion, setDismissedVersion] = useState<string | null>(null);
@@ -59,12 +61,18 @@ export function UpdateBanner({
           )}
           {updateState.status === 'downloaded' && (
             <span>
-              Actualización <strong className="text-white">v{updateState.latestVersion}</strong>{' '}
-              descargada y lista para instalar.
+              {updateState.error ? (
+                <span className="text-amber-200">{updateState.error}</span>
+              ) : (
+                <>
+                  Actualización <strong className="text-white">v{updateState.latestVersion}</strong>{' '}
+                  descargada y lista para instalar.
+                </>
+              )}
             </span>
           )}
           {updateState.status === 'installing' && (
-            <span>Aplicando actualización y reiniciando KellyClipAi Studio...</span>
+            <span>Abriendo instalador y cerrando KellyClipAi Studio...</span>
           )}
         </div>
       </div>
@@ -110,14 +118,27 @@ export function UpdateBanner({
         )}
 
         {updateState.status === 'downloaded' && (
-          <button
-            type="button"
-            onClick={onInstall}
-            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Actualizar y reiniciar</span>
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={onInstall}
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Actualizar y reiniciar</span>
+            </button>
+            {onOpenFolder && (
+              <button
+                type="button"
+                onClick={onOpenFolder}
+                title="Abrir carpeta donde se descargó el instalador .exe"
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] text-indigo-100 bg-indigo-900/60 hover:bg-indigo-800/70 cursor-pointer"
+              >
+                <FolderOpen className="w-3.5 h-3.5" />
+                <span>Abrir carpeta</span>
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>
