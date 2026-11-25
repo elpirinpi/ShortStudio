@@ -322,8 +322,10 @@ export default function App() {
     [appSettings.localConnectorToken]
   );
 
+  const isDesktopApp = Boolean(window.shortStudioDesktop?.isDesktop);
+
   useEffect(() => {
-    if (activeView !== 'create' || !appSettings.localConnectorToken) return;
+    if (isDesktopApp || activeView !== 'create' || !appSettings.localConnectorToken) return;
     let canceled = false;
     const probe = async () => {
       const status = await probeWindowsConnector(appSettings.localConnectorToken || '');
@@ -335,7 +337,7 @@ export default function App() {
       canceled = true;
       window.clearInterval(timer);
     };
-  }, [activeView, appSettings.localConnectorToken]);
+  }, [activeView, appSettings.localConnectorToken, isDesktopApp]);
 
   const activeProject = useMemo(
     () => projects.find((p) => p.id === activeProjectId) || null,
@@ -532,33 +534,43 @@ export default function App() {
       setCreateError('');
       setConnectorModalError('');
       setUrlProgressPercent(2);
-      setUrlStatusText('Comprobando Conector Local Windows...');
+      setUrlStatusText(
+        isDesktopApp
+          ? 'Iniciando descarga MP4 1080p en tu PC...'
+          : 'Comprobando Conector Local Windows...'
+      );
 
       try {
-        // 1. Prefer local Windows PC connector when running (residential IP, saves MP4 directly to Downloads\ShortStudio)
-        const liveStatus = await probeWindowsConnector(connectorToken);
-        setConnectorStatus(liveStatus);
+        if (!isDesktopApp) {
+          // 1. In Web mode, prefer local Windows PC connector when running (residential IP, saves MP4 directly)
+          const liveStatus = await probeWindowsConnector(connectorToken);
+          setConnectorStatus(liveStatus);
 
-        if (liveStatus.connected) {
-          setUrlProgressPercent(4);
-          setUrlStatusText('Iniciando descarga MP4 1080p en tu PC...');
-          const pcRes = await downloadViaWindowsConnector(url, connectorToken, (prog) => {
-            setUrlProgressPercent(prog.percent);
-            setUrlStatusText(prog.label);
-          });
-          if (pcRes.ok) {
-            await stageVideoBlob(pcRes.blob, pcRes.fileName, pcRes.savedPath);
-            return true;
-          }
-          if (!pcRes.unreachable) {
-            setCreateError(pcRes.error);
-            return false;
+          if (liveStatus.connected) {
+            setUrlProgressPercent(4);
+            setUrlStatusText('Iniciando descarga MP4 1080p en tu PC...');
+            const pcRes = await downloadViaWindowsConnector(url, connectorToken, (prog) => {
+              setUrlProgressPercent(prog.percent);
+              setUrlStatusText(prog.label);
+            });
+            if (pcRes.ok) {
+              await stageVideoBlob(pcRes.blob, pcRes.fileName, pcRes.savedPath);
+              return true;
+            }
+            if (!pcRes.unreachable) {
+              setCreateError(pcRes.error);
+              return false;
+            }
           }
         }
 
-        // 2. Fallback to backend extractor (works for direct MP4/WebM and non-blocked platforms)
+        // 2. Embedded PC backend (in Desktop .exe) or server extractor (in Web)
         setUrlProgressPercent(10);
-        setUrlStatusText('Intentando descarga directa desde el servidor...');
+        setUrlStatusText(
+          isDesktopApp
+            ? 'Descargando MP4 1080p con yt-dlp integrado...'
+            : 'Intentando descarga directa desde el servidor...'
+        );
         const result = await importVideoViaBackend(url);
         if (result.ok) {
           return true;
@@ -581,7 +593,7 @@ export default function App() {
         setUrlProgressPercent(0);
       }
     },
-    [connectorToken, importVideoViaBackend, stageVideoBlob]
+    [connectorToken, importVideoViaBackend, isDesktopApp, stageVideoBlob]
   );
 
   const handleDownloadBlockedWithConnector = useCallback(async () => {

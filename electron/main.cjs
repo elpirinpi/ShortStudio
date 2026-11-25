@@ -437,12 +437,21 @@ async function startEmbeddedBackend() {
     throw new Error('No se encontró startServer en dist-server/server.mjs');
   }
 
-  serverHandle = await mod.startServer({
-    port: 0,
-    host: '127.0.0.1',
-    distDir,
-    binDir,
-  });
+  try {
+    serverHandle = await mod.startServer({
+      port: 47832,
+      host: '127.0.0.1',
+      distDir,
+      binDir,
+    });
+  } catch {
+    serverHandle = await mod.startServer({
+      port: 0,
+      host: '127.0.0.1',
+      distDir,
+      binDir,
+    });
+  }
 
   return serverHandle.port;
 }

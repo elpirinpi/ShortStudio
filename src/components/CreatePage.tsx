@@ -84,6 +84,7 @@ export function CreatePage({
   const [urlInput, setUrlInput] = useState('');
   const [urlLoading, setUrlLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const isDesktopApp = Boolean(window.shortStudioDesktop?.isDesktop);
 
   const handleUrlSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -197,7 +198,12 @@ export function CreatePage({
                 <label className="text-xs font-medium text-slate-300">
                   Descargar desde YouTube, TikTok, Instagram, Vimeo o MP4 directo
                 </label>
-                {connectorStatus.connected ? (
+                {isDesktopApp ? (
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-400">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Motor PC integrado</span>
+                  </span>
+                ) : connectorStatus.connected ? (
                   <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-400">
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>Conector PC activo</span>
@@ -275,7 +281,9 @@ export function CreatePage({
                 </div>
               ) : (
                 <p className="text-[11px] text-slate-500 leading-relaxed">
-                  {connectorStatus.connected
+                  {isDesktopApp
+                    ? 'Descarga nativa integrada en tu PC: pega enlaces de YouTube u otras plataformas y se descargan en 1080p MP4 sin cookies ni conector externo.'
+                    : connectorStatus.connected
                     ? 'Conector Windows activo: los enlaces se descargan en 1080p MP4 directo a Descargas\\ShortStudio y entran al editor sin cookies.'
                     : 'Usa el Conector Windows (1 clic) para descargar enlaces de YouTube directamente a tu carpeta Descargas en MP4 sin cookies ni capturas.'}
                 </p>

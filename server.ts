@@ -550,12 +550,22 @@ async function downloadToFile(url: string, destPath: string, userAgent: string):
 async function handleYouTubeImport(res: Response, rawUrl: string, videoId: string) {
   const oembedPromise = fetchYouTubeOEmbed(videoId);
 
-  // 1. Primary local extractor: yt-dlp (IPv4 + multi-client + node JS runtime, zero env vars)
-  const ytDlpAttempt = await runYtDlpDownload(rawUrl, [
-    '-4',
-    '--extractor-args',
-    'youtube:player_client=tv_simply,android_vr,ios,web',
-  ]);
+  // 1. Primary local extractor: yt-dlp (IPv4 + deno JS runtime, zero env vars)
+  let ytDlpAttempt = IS_WINDOWS
+    ? await runYtDlpDownload(rawUrl, ['-4'])
+    : await runYtDlpDownload(rawUrl, [
+        '-4',
+        '--extractor-args',
+        'youtube:player_client=tv_simply,android_vr,ios,web',
+      ]);
+
+  if (!ytDlpAttempt.ok && IS_WINDOWS) {
+    ytDlpAttempt = await runYtDlpDownload(rawUrl, [
+      '-4',
+      '--extractor-args',
+      'youtube:player_client=tv_simply,android_vr,ios,web',
+    ]);
+  }
 
   if (ytDlpAttempt.ok) {
     const oembed = await oembedPromise;
@@ -1166,12 +1176,15 @@ export async function startServer(options: StartServerOptions = {}) {
     app: ReturnType<typeof express>;
     server: import('node:http').Server;
     port: number;
-  }>((resolve) => {
+  }>((resolve, reject) => {
     const server = app.listen(targetPort, targetHost, () => {
       const addr = server.address();
       const actualPort = typeof addr === 'object' && addr ? addr.port : targetPort;
       console.log(`ShortStudio server listening on http://${targetHost}:${actualPort}`);
       resolve({ app, server, port: actualPort });
+    });
+    server.once('error', (err) => {
+      reject(err);
     });
   });
 }
