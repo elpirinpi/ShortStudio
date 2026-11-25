@@ -1,0 +1,71 @@
+name: Build Windows EXE (KellyClipAi Studio)
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm install
+
+      - name: Build frontend and server bundle
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          npm run build
+          npm run build:server
+
+      - name: Prepare Electron desktop directory
+        shell: pwsh
+        run: |
+          if (Test-Path electron/dist) { Remove-Item -Recurse -Force electron/dist }
+          Copy-Item -Recurse -Force dist electron/dist
+          npm --prefix electron install
+
+      - name: Package Windows .exe (Installer + Portable)
+        run: npm --prefix electron run dist:win
+
+      - name: Upload Windows .exe Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: KellyClipAi-Studio-Windows-EXE
+          path: |
+            release/KellyClipAi-Studio-Setup-*.exe
+            release/KellyClipAi-Studio-Portable-*.exe
+
+      - name: Publish GitHub Release on Tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/KellyClipAi-Studio-Setup-*.exe
+            release/KellyClipAi-Studio-Portable-*.exe
+          body: |
+            **KellyClipAi Studio (ShortStudio)** para Windows x64.
+            Desarrollado por **Kelly Benjamin De La Cruz**.
+
+            Incluye:
+            - `KellyClipAi-Studio-Portable-*.exe` (ejecutable directo sin instalación)
+            - `KellyClipAi-Studio-Setup-*.exe` (instalador completo para Windows)

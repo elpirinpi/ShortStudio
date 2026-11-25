@@ -1,0 +1,67 @@
+{
+  "name": "kellyclipai-studio-desktop",
+  "version": "1.0.0",
+  "description": "KellyClipAi Studio (ShortStudio) — Editor profesional de video vertical 9:16 con IA local, desarrollado por Kelly Benjamin De La Cruz",
+  "author": "Kelly Benjamin De La Cruz",
+  "license": "MIT",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win --x64"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "youtubei.js": "^18.3.0"
+  },
+  "devDependencies": {
+    "electron": "^35.1.5",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.kellybenjamin.kellyclipaistudio",
+    "productName": "KellyClipAi Studio",
+    "copyright": "Copyright © 2026 Kelly Benjamin De La Cruz",
+    "asar": true,
+    "asarUnpack": [
+      "dist/**/*",
+      "dist-server/**/*"
+    ],
+    "directories": {
+      "output": "../release"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "dist-server/**/*",
+      "dist/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "KellyClipAi Studio",
+      "artifactName": "KellyClipAi-Studio-Setup-${version}.exe"
+    },
+    "portable": {
+      "artifactName": "KellyClipAi-Studio-Portable-${version}.exe"
+    }
+  }
+}
