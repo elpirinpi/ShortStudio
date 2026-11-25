@@ -6,7 +6,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { ArrowLeft, Film, FileText, Music, Redo2, Undo2 } from 'lucide-react';
+import { ArrowLeft, Film, FileText, Music, Plus, Redo2, Undo2 } from 'lucide-react';
 import {
   ClipProject,
   DEFAULT_SETTINGS,
@@ -44,6 +44,7 @@ interface ClipEditorWorkspaceProps {
   mediaUrl: string | null;
   whisperModel: WhisperModelId;
   onSelectClip: (clipId: string) => void;
+  onOpenManualClipModal?: (projectId: string) => void;
   onSaveClipEdits: (
     projectId: string,
     clipId: string,
@@ -75,6 +76,7 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
       mediaUrl,
       whisperModel,
       onSelectClip,
+      onOpenManualClipModal,
       onSaveClipEdits,
       onBackToResults,
       onNotify,
@@ -1473,6 +1475,16 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
                       </option>
                     ))}
                   </select>
+                )}
+                {onOpenManualClipModal && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenManualClipModal(activeProject.id)}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-indigo-300 bg-indigo-500/10 border border-indigo-500/30 hover:bg-indigo-500/20 whitespace-nowrap cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Nuevo Clip</span>
+                  </button>
                 )}
                 <span className="hidden xl:inline text-[11px] text-slate-500 whitespace-nowrap">
                   Guardado local automático

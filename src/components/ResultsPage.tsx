@@ -9,8 +9,10 @@ import {
   Pause,
   Pencil,
   Play,
+  Plus,
   Scissors,
   Sparkles,
+  Trash2,
   X,
 } from 'lucide-react';
 import { ClipProject, GeneratedClip } from '../types/editor';
@@ -22,7 +24,9 @@ interface ResultsPageProps {
   retranscribing?: boolean;
   retranscribeStatus?: string;
   onRetranscribeProject?: (projectId: string) => void;
+  onOpenManualClipModal?: (projectId: string) => void;
   onRenameClip?: (projectId: string, clipId: string, title: string) => void;
+  onDeleteClip?: (projectId: string, clipId: string) => void;
   onEditClipInStudio: (projectId: string, clipId: string) => void;
   onScheduleClip: (projectId: string, clipId: string) => void;
   onBackToProjects: () => void;
@@ -117,7 +121,9 @@ export function ResultsPage({
   retranscribing = false,
   retranscribeStatus = '',
   onRetranscribeProject,
+  onOpenManualClipModal,
   onRenameClip,
+  onDeleteClip,
   onEditClipInStudio,
   onScheduleClip,
   onBackToProjects,
@@ -209,17 +215,27 @@ export function ResultsPage({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {onOpenManualClipModal && (
+              <button
+                type="button"
+                onClick={() => onOpenManualClipModal(project.id)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 cursor-pointer whitespace-nowrap"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Nuevo Clip Manual</span>
+              </button>
+            )}
             {!project.isDemo && onRetranscribeProject && (
               <button
                 type="button"
                 disabled={retranscribing}
                 onClick={() => onRetranscribeProject(project.id)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-45 cursor-pointer whitespace-nowrap"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] disabled:opacity-45 cursor-pointer whitespace-nowrap"
               >
                 {retranscribing ? (
                   <LoaderCircle className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <Mic className="w-3.5 h-3.5" />
+                  <Mic className="w-3.5 h-3.5 text-indigo-400" />
                 )}
                 <span>
                   {retranscribing
@@ -303,6 +319,30 @@ export function ResultsPage({
         )}
 
         <div className="space-y-4">
+          {project.clips.length === 0 && (
+            <div className="bg-[#12151c] border border-dashed border-slate-800 rounded-xl p-8 text-center space-y-3">
+              <Scissors className="w-7 h-7 text-indigo-400 mx-auto" />
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-slate-100">
+                  Aún no hay clips en este proyecto
+                </p>
+                <p className="text-xs text-slate-400">
+                  Selecciona manualmente los momentos exactos de tu video para crear tus Shorts 9:16.
+                </p>
+              </div>
+              {onOpenManualClipModal && (
+                <button
+                  type="button"
+                  onClick={() => onOpenManualClipModal(project.id)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Crear Primer Clip Manual</span>
+                </button>
+              )}
+            </div>
+          )}
+
           {project.clips.map((clip, idx) => {
             const breakdownItems = [
               { label: 'Energía Vocal', value: clip.signalBreakdown.vocalEnergy },
@@ -479,6 +519,17 @@ export function ResultsPage({
                       <Download className="w-3.5 h-3.5 text-slate-400" />
                       <span>Descargar .SRT</span>
                     </button>
+                    {onDeleteClip && (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteClip(project.id, clip.id)}
+                        title="Eliminar este clip"
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-rose-300 bg-[#191d26] border border-slate-800 hover:bg-rose-500/10 hover:border-rose-500/40 cursor-pointer whitespace-nowrap ml-auto"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Eliminar</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               </article>

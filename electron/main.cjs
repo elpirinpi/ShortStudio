@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, safeStorage, shell } = require('electron');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -547,6 +547,63 @@ ipcMain.handle('updates:open-release', () => {
     return shell.openExternal(url);
   }
   return undefined;
+});
+
+function getAuthCredentialsFilePath() {
+  return path.join(app.getPath('userData'), 'remembered-auth.bin');
+}
+
+ipcMain.handle('auth:get-remembered', () => {
+  try {
+    if (!safeStorage.isEncryptionAvailable()) {
+      return { email: '', password: '', encrypted: false };
+    }
+    const filePath = getAuthCredentialsFilePath();
+    if (!fs.existsSync(filePath)) {
+      return { email: '', password: '', encrypted: true };
+    }
+    const encryptedBuf = fs.readFileSync(filePath);
+    const decrypted = safeStorage.decryptString(encryptedBuf);
+    const parsed = JSON.parse(decrypted);
+    return {
+      email: typeof parsed.email === 'string' ? parsed.email : '',
+      password: typeof parsed.password === 'string' ? parsed.password : '',
+      encrypted: true,
+    };
+  } catch {
+    return { email: '', password: '', encrypted: false };
+  }
+});
+
+ipcMain.handle('auth:save-remembered', (_event, creds) => {
+  try {
+    if (!safeStorage.isEncryptionAvailable()) {
+      return { ok: false, encrypted: false };
+    }
+    const email = typeof creds?.email === 'string' ? creds.email.trim() : '';
+    const password = typeof creds?.password === 'string' ? creds.password : '';
+    if (!email || !password) {
+      return { ok: false, encrypted: true };
+    }
+    const payload = JSON.stringify({ email, password });
+    const encryptedBuf = safeStorage.encryptString(payload);
+    fs.writeFileSync(getAuthCredentialsFilePath(), encryptedBuf, { mode: 0o600 });
+    return { ok: true, encrypted: true };
+  } catch {
+    return { ok: false, encrypted: false };
+  }
+});
+
+ipcMain.handle('auth:clear-remembered', () => {
+  try {
+    const filePath = getAuthCredentialsFilePath();
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false };
+  }
 });
 
 async function createWindow() {

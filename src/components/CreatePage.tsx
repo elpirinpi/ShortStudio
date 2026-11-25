@@ -11,6 +11,7 @@ import {
   Link2,
   LoaderCircle,
   Play,
+  Scissors,
   Upload,
   Video,
 } from 'lucide-react';
@@ -56,6 +57,7 @@ interface CreatePageProps {
   onUpdateConfig: <K extends keyof ProjectConfig>(key: K, value: ProjectConfig[K]) => void;
   onChangeAiEngine: (engine: AiEngineMode) => void;
   onAnalyze: () => void;
+  onStartManualClips: () => void;
   onRunDemoProject: () => void;
 }
 
@@ -78,6 +80,7 @@ export function CreatePage({
   onUpdateConfig,
   onChangeAiEngine,
   onAnalyze,
+  onStartManualClips,
   onRunDemoProject,
 }: CreatePageProps) {
   const [dragging, setDragging] = useState(false);
@@ -583,7 +586,7 @@ export function CreatePage({
               </label>
             </div>
 
-            <div className="p-4">
+            <div className="p-4 space-y-2">
               <button
                 type="button"
                 disabled={!stagedMedia || analyzing}
@@ -594,6 +597,15 @@ export function CreatePage({
                   {analyzing ? 'Analizando video localmente...' : 'Analizar y Generar Clips'}
                 </span>
                 {!analyzing && <ArrowRight className="w-4 h-4" />}
+              </button>
+              <button
+                type="button"
+                disabled={!stagedMedia || analyzing}
+                onClick={onStartManualClips}
+                className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-xs font-medium text-slate-200 bg-[#191d26] border border-slate-800 hover:bg-[#222733] disabled:opacity-45 disabled:cursor-not-allowed transition-colors cursor-pointer"
+              >
+                <Scissors className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Crear Clips Manualmente</span>
               </button>
             </div>
           </div>

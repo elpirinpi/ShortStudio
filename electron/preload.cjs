@@ -11,6 +11,9 @@ contextBridge.exposeInMainWorld('shortStudioDesktop', {
   downloadUpdate: () => ipcRenderer.invoke('updates:download'),
   installUpdate: () => ipcRenderer.invoke('updates:install'),
   openReleasePage: () => ipcRenderer.invoke('updates:open-release'),
+  getRememberedCredentials: () => ipcRenderer.invoke('auth:get-remembered'),
+  saveRememberedCredentials: (creds) => ipcRenderer.invoke('auth:save-remembered', creds),
+  clearRememberedCredentials: () => ipcRenderer.invoke('auth:clear-remembered'),
   onUpdateState: (listener) => {
     if (typeof listener !== 'function') return () => {};
     const handler = (_event, state) => listener(state);

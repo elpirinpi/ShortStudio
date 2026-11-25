@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   AlertCircle,
   CheckCircle2,
@@ -20,14 +20,132 @@ import {
   translateSupabaseError,
 } from '../lib/supabase';
 
+const REMEMBER_FLAG_KEY = 'shortstudio.rememberCredentials';
+const REMEMBER_EMAIL_KEY = 'shortstudio.rememberedEmail';
+
+interface BrowserPasswordCredential extends Credential {
+  id: string;
+  password?: string;
+}
+
+type BrowserPasswordCredentialCtor = new (data: {
+  id: string;
+  password: string;
+  name?: string;
+}) => Credential;
+
 export function LoginScreen() {
   const [mode, setMode] = useState<'login' | 'signup' | 'reset'>('login');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(() => {
+    try {
+      return localStorage.getItem(REMEMBER_EMAIL_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(REMEMBER_FLAG_KEY);
+      if (saved === 'false') return false;
+      if (saved === 'true') return true;
+      return Boolean(window.shortStudioDesktop?.isDesktop);
+    } catch {
+      return false;
+    }
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const isDesktopApp = Boolean(window.shortStudioDesktop?.isDesktop);
+
+  useEffect(() => {
+    let active = true;
+    const loadSavedCredentials = async () => {
+      try {
+        if (window.shortStudioDesktop?.getRememberedCredentials) {
+          const saved = await window.shortStudioDesktop.getRememberedCredentials();
+          if (!active) return;
+          if (saved.email) {
+            setEmail((prev) => prev || saved.email);
+            if (saved.password) {
+              setPassword((prev) => prev || saved.password);
+            }
+            setRememberMe(true);
+          }
+          return;
+        }
+
+        if (typeof navigator !== 'undefined' && navigator.credentials?.get) {
+          const cred = (await navigator.credentials.get({
+            password: true,
+            mediation: 'silent',
+          } as CredentialRequestOptions)) as BrowserPasswordCredential | null;
+          if (!active || !cred) return;
+          if (cred.id) {
+            setEmail((prev) => prev || cred.id);
+          }
+          if (cred.password) {
+            setPassword((prev) => prev || cred.password || '');
+            setRememberMe(true);
+          }
+        }
+      } catch {
+        // Ignore browser credential silent read errors
+      }
+    };
+    void loadSavedCredentials();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const persistCredentialsChoice = async (cleanEmail: string, rawPassword: string) => {
+    try {
+      if (rememberMe) {
+        localStorage.setItem(REMEMBER_FLAG_KEY, 'true');
+        localStorage.setItem(REMEMBER_EMAIL_KEY, cleanEmail);
+        if (window.shortStudioDesktop?.saveRememberedCredentials) {
+          await window.shortStudioDesktop.saveRememberedCredentials({
+            email: cleanEmail,
+            password: rawPassword,
+          });
+        } else if (
+          typeof window !== 'undefined' &&
+          'PasswordCredential' in window &&
+          navigator.credentials?.store
+        ) {
+          const Ctor = (
+            window as unknown as { PasswordCredential?: BrowserPasswordCredentialCtor }
+          ).PasswordCredential;
+          if (Ctor) {
+            const cred = new Ctor({ id: cleanEmail, password: rawPassword, name: cleanEmail });
+            await navigator.credentials.store(cred).catch(() => {});
+          }
+        }
+      } else {
+        localStorage.setItem(REMEMBER_FLAG_KEY, 'false');
+        localStorage.removeItem(REMEMBER_EMAIL_KEY);
+        await window.shortStudioDesktop?.clearRememberedCredentials?.();
+      }
+    } catch {
+      // Ignore storage failures
+    }
+  };
+
+  const handleToggleRememberMe = (checked: boolean) => {
+    setRememberMe(checked);
+    try {
+      localStorage.setItem(REMEMBER_FLAG_KEY, checked ? 'true' : 'false');
+      if (!checked) {
+        localStorage.removeItem(REMEMBER_EMAIL_KEY);
+        void window.shortStudioDesktop?.clearRememberedCredentials?.();
+      }
+    } catch {
+      // ignore
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,6 +181,8 @@ export function LoginScreen() {
         });
         if (error) {
           setErrorMsg(translateSupabaseError(error.message));
+        } else {
+          await persistCredentialsChoice(cleanEmail, password);
         }
       } else {
         const { data, error } = await supabase.auth.signUp({
@@ -71,11 +191,14 @@ export function LoginScreen() {
         });
         if (error) {
           setErrorMsg(translateSupabaseError(error.message));
-        } else if (!data.session) {
-          setSuccessMsg(
-            'Cuenta creada en Supabase. Revisa tu bandeja de correo para confirmar tu cuenta y luego inicia sesión.'
-          );
-          setMode('login');
+        } else {
+          await persistCredentialsChoice(cleanEmail, password);
+          if (!data.session) {
+            setSuccessMsg(
+              'Cuenta creada en Supabase. Revisa tu bandeja de correo para confirmar tu cuenta y luego inicia sesión.'
+            );
+            setMode('login');
+          }
         }
       }
     } catch (err) {
@@ -158,7 +281,8 @@ export function LoginScreen() {
                 <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="email"
-                  autoComplete="email"
+                  name="email"
+                  autoComplete="username email"
                   required
                   value={email}
                   disabled={!isSupabaseConfigured || loading}
@@ -191,6 +315,7 @@ export function LoginScreen() {
                   <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type={showPassword ? 'text' : 'password'}
+                    name="password"
                     autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                     required
                     minLength={6}
@@ -210,6 +335,24 @@ export function LoginScreen() {
                   </button>
                 </div>
               </div>
+            )}
+
+            {mode !== 'reset' && (
+              <label className="flex items-center justify-between gap-2 text-xs text-slate-300 cursor-pointer select-none">
+                <span className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    disabled={!isSupabaseConfigured || loading}
+                    onChange={(e) => handleToggleRememberMe(e.target.checked)}
+                    className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
+                  />
+                  <span>Recordar mis credenciales</span>
+                </span>
+                <span className="text-[11px] text-slate-500">
+                  {isDesktopApp ? 'Cifrado Windows' : 'Correo y gestor seguro'}
+                </span>
+              </label>
             )}
 
             {errorMsg && (

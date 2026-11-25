@@ -632,7 +632,7 @@ export async function transcribeVideoRange(params: {
   }
 }
 
-function buildEditorSettingsForClip(
+export function buildEditorSettingsForClip(
   config: ProjectConfig,
   start: number,
   end: number,
@@ -890,6 +890,163 @@ export async function analyzeVideoLocally(params: {
     clips,
     aiEngineUsed: faceEngineUsed ? `${engineUsed} · ${faceEngineUsed}` : engineUsed,
   };
+}
+
+export async function createManualProjectShell(params: {
+  blob: Blob;
+  title: string;
+  mediaBlobId: string;
+  config: ProjectConfig;
+}): Promise<ClipProject> {
+  const { blob, title, mediaBlobId, config } = params;
+  const meta = await extractVideoMetadataAndThumbnail(blob);
+  const now = new Date().toISOString();
+
+  return {
+    id: `proj_${Date.now()}`,
+    title,
+    status: 'completed',
+    createdAt: now,
+    updatedAt: now,
+    mediaBlobId,
+    mediaName: title,
+    isDemo: false,
+    duration: meta.duration,
+    width: meta.width,
+    height: meta.height,
+    thumbnailDataUrl: meta.thumbnailDataUrl,
+    config,
+    transcript: [],
+    clips: [],
+    aiEngineUsed: 'Creación Manual de Clips',
+  };
+}
+
+export async function createManualClip(params: {
+  project: ClipProject;
+  start: number;
+  end: number;
+  title?: string;
+  source: Blob | string | null;
+  whisperModel: WhisperModelId;
+  transcribeAudio?: boolean;
+  trackFaces?: boolean;
+  onProgress?: (pct: number, label: string) => void;
+}): Promise<{
+  clip: GeneratedClip;
+  addedTranscript: TranscriptSegment[];
+  engineNote?: string;
+}> {
+  const {
+    project,
+    source,
+    whisperModel,
+    transcribeAudio = false,
+    trackFaces = false,
+    onProgress,
+  } = params;
+
+  const maxDur = Math.max(1, project.duration);
+  const safeStart = Number(Math.max(0, Math.min(maxDur - 0.5, params.start)).toFixed(1));
+  const safeEnd = Number(
+    Math.min(maxDur, Math.max(safeStart + 0.5, params.end)).toFixed(1)
+  );
+  const clipDur = Number((safeEnd - safeStart).toFixed(1));
+
+  let cues = transcriptToSubtitles(project.transcript, safeStart, safeEnd, 3);
+  let addedTranscript: TranscriptSegment[] = [];
+  let engineNote: string | undefined;
+
+  if (cues.length === 0 && transcribeAudio && source && !project.isDemo) {
+    onProgress?.(15, 'Transcribiendo fragmento con Whisper local...');
+    const res = await transcribeVideoRange({
+      source,
+      start: safeStart,
+      end: safeEnd,
+      language: project.config.language,
+      modelId: whisperModel,
+      wordsPerBlock: 3,
+      onProgress: (pct, msg) => {
+        const mapped = trackFaces ? Math.round(pct * 0.6) : pct;
+        onProgress?.(mapped, msg);
+      },
+    });
+    cues = res.subtitles;
+    addedTranscript = res.transcript;
+    engineNote = res.engineUsed;
+  }
+
+  let faceKeyframes: FaceKeyframe[] = [];
+  let faceEngineUsed: string | undefined;
+  if (trackFaces) {
+    if (project.isDemo) {
+      faceKeyframes = createDemoFaceKeyframes(safeStart, safeEnd);
+      faceEngineUsed = 'Seguimiento Demo IA';
+    } else if (source) {
+      try {
+        onProgress?.(transcribeAudio ? 65 : 20, 'Detectando rostro en el fragmento...');
+        const tracked = await trackFacesInVideo({
+          source,
+          start: safeStart,
+          end: safeEnd,
+          smoothing: 72,
+          sampleFps: 1.5,
+          maxSamples: 30,
+          onProgress: (pct, msg) => {
+            const base = transcribeAudio ? 65 : 20;
+            onProgress?.(Math.min(96, base + Math.round((pct / 100) * (96 - base))), msg);
+          },
+        });
+        faceKeyframes = tracked.keyframes;
+        faceEngineUsed = tracked.engineUsed;
+      } catch {
+        faceKeyframes = [];
+      }
+    }
+  }
+
+  onProgress?.(100, 'Clip manual listo');
+
+  const snippet = cues.map((c) => c.text.replace(/\*/g, '')).join(' ').trim();
+  const cleanTitle = params.title?.trim();
+  const clipIndex = project.clips.length + 1;
+  const finalTitle =
+    cleanTitle ||
+    `Clip Manual #${clipIndex} (${Math.floor(safeStart)}s–${Math.ceil(safeEnd)}s)`;
+
+  const keywords = extractKeywords(snippet);
+  const editorConfig: ProjectConfig = {
+    ...project.config,
+    autoFaceTrack: Boolean(trackFaces && faceKeyframes.length > 0),
+  };
+
+  const clip: GeneratedClip = {
+    id: `clip_manual_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    title: finalTitle,
+    start: safeStart,
+    end: safeEnd,
+    duration: clipDur,
+    score: 90,
+    viralReason: 'Clip recortado manualmente por el usuario.',
+    keywords: keywords.length > 0 ? keywords : ['manual', 'short', 'clip'],
+    signalBreakdown: {
+      vocalEnergy: 8.5,
+      pacing: 8.8,
+      hookStrength: 8.7,
+      visualDynamics: 8.5,
+    },
+    subtitles: cues,
+    editorSettings: buildEditorSettingsForClip(
+      editorConfig,
+      safeStart,
+      safeEnd,
+      faceKeyframes,
+      faceEngineUsed
+    ),
+    transcriptSnippet: snippet || 'Clip manual listo para editar en ShortStudio.',
+  };
+
+  return { clip, addedTranscript, engineNote };
 }
 
 export function createDemoProject(config: ProjectConfig): ClipProject {

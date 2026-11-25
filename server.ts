@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import type { Request, Response } from 'express';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -383,10 +383,20 @@ interface YtDlpError {
   reason: string;
 }
 
+function formatBytesPerSec(rawSpeed: string): string {
+  const num = Number(rawSpeed);
+  if (!Number.isFinite(num) || num <= 0) return '';
+  if (num >= 1024 * 1024) return `${(num / (1024 * 1024)).toFixed(1)} MB/s`;
+  if (num >= 1024) return `${(num / 1024).toFixed(0)} KB/s`;
+  return `${Math.round(num)} B/s`;
+}
+
 async function runYtDlpDownload(
   targetUrl: string,
-  extraArgs: string[] = []
+  extraArgs: string[] = [],
+  onProgress?: (percent: number, label: string) => void
 ): Promise<YtDlpResult | YtDlpError> {
+  onProgress?.(4, 'Preparando motor yt-dlp...');
   const ytDlpBin = await ensureYtDlp();
   const workDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ytdlp_ss_'));
 
@@ -403,6 +413,10 @@ async function runYtDlpDownload(
       '--no-warnings',
       '--no-playlist',
       '--force-overwrites',
+      '--newline',
+      '--progress',
+      '--progress-template',
+      'download:SS_PROG:%(progress._percent_str)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s',
       '--max-filesize',
       '450M',
       '-f',
@@ -417,6 +431,7 @@ async function runYtDlpDownload(
     ];
 
     if (IS_WINDOWS) {
+      onProgress?.(6, 'Verificando runtime Deno / FFmpeg...');
       const denoExe = await ensureDenoOnWindows();
       if (denoExe) {
         args.push('--js-runtimes', `deno:${denoExe}`, '--remote-components', 'ejs:github');
@@ -431,11 +446,149 @@ async function runYtDlpDownload(
     }
 
     args.push('--', targetUrl);
+    onProgress?.(8, 'Conectando y obteniendo formatos de video...');
 
-    const { stdout } = await execFileAsync(ytDlpBin, args, {
-      timeout: 120_000,
-      maxBuffer: 10 * 1024 * 1024,
+    let highestPct = 8;
+    let streamCount = 0;
+
+    const { stdout, stderr, exitCode } = await new Promise<{
+      stdout: string;
+      stderr: string;
+      exitCode: number;
+    }>((resolve, reject) => {
+      const child = spawn(ytDlpBin, args, {
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      let stdoutBuf = '';
+      let stderrBuf = '';
+      let outLineBuf = '';
+      let errLineBuf = '';
+
+      const timeoutTimer = setTimeout(() => {
+        try {
+          child.kill('SIGTERM');
+        } catch {
+          // ignore
+        }
+        reject(new Error('Tiempo de espera agotado descargando el video.'));
+      }, 180_000);
+
+      const handleLine = (rawLine: string) => {
+        const line = rawLine.trim();
+        if (!line) return;
+
+        if (line.includes('[download] Destination:')) {
+          streamCount += 1;
+          if (streamCount === 1) {
+            highestPct = Math.max(highestPct, 10);
+            onProgress?.(highestPct, 'Descargando pista de video 1080p...');
+          } else {
+            highestPct = Math.max(highestPct, 78);
+            onProgress?.(highestPct, 'Descargando pista de audio...');
+          }
+          return;
+        }
+
+        if (
+          line.includes('[Merger]') ||
+          line.includes('Merging formats into') ||
+          line.includes('[Fixup')
+        ) {
+          highestPct = Math.max(highestPct, 94);
+          onProgress?.(highestPct, 'Uniendo video y audio MP4 con FFmpeg...');
+          return;
+        }
+
+        const progIdx = line.indexOf('SS_PROG:');
+        if (progIdx !== -1) {
+          const payload = line.slice(progIdx + 'SS_PROG:'.length);
+          const [rawPct, rawDown, rawTotal, rawEstimate, rawSpeed] = payload.split('|');
+          const pctMatch = (rawPct || '').match(/([\d.]+)/);
+          let rawPercent = pctMatch ? parseFloat(pctMatch[1]) : NaN;
+          if (!Number.isFinite(rawPercent)) {
+            const d = Number(rawDown);
+            const t = Number(rawTotal) || Number(rawEstimate);
+            if (Number.isFinite(d) && Number.isFinite(t) && t > 0) {
+              rawPercent = (d / t) * 100;
+            }
+          }
+          if (Number.isFinite(rawPercent)) {
+            const clamped = Math.max(0, Math.min(100, rawPercent));
+            const mapped =
+              streamCount <= 1
+                ? Math.round(10 + (clamped / 100) * 68)
+                : Math.round(78 + (clamped / 100) * 15);
+            highestPct = Math.max(highestPct, Math.min(93, mapped));
+            const speedTxt = formatBytesPerSec(rawSpeed || '');
+            const phaseLabel =
+              streamCount <= 1 ? 'Descargando video' : 'Descargando audio';
+            onProgress?.(
+              highestPct,
+              `${phaseLabel}... ${Math.round(clamped)}%${speedTxt ? ` (${speedTxt})` : ''}`
+            );
+          }
+          return;
+        }
+
+        const fallbackPct = line.match(/\[download\]\s+([\d.]+)%/);
+        if (fallbackPct) {
+          const rawPercent = parseFloat(fallbackPct[1]);
+          if (Number.isFinite(rawPercent)) {
+            const mapped =
+              streamCount <= 1
+                ? Math.round(10 + (rawPercent / 100) * 68)
+                : Math.round(78 + (rawPercent / 100) * 15);
+            highestPct = Math.max(highestPct, Math.min(93, mapped));
+            onProgress?.(highestPct, `Descargando MP4... ${Math.round(rawPercent)}%`);
+          }
+        }
+      };
+
+      const feedLines = (chunk: Buffer, isErr: boolean) => {
+        const text = chunk.toString('utf8');
+        if (isErr) {
+          stderrBuf += text;
+          errLineBuf += text;
+          const parts = errLineBuf.split(/\r?\n|\r/);
+          errLineBuf = parts.pop() || '';
+          for (const p of parts) handleLine(p);
+        } else {
+          stdoutBuf += text;
+          outLineBuf += text;
+          const parts = outLineBuf.split(/\r?\n|\r/);
+          outLineBuf = parts.pop() || '';
+          for (const p of parts) handleLine(p);
+        }
+      };
+
+      child.stdout?.on('data', (c: Buffer) => feedLines(c, false));
+      child.stderr?.on('data', (c: Buffer) => feedLines(c, true));
+      child.on('error', (err) => {
+        clearTimeout(timeoutTimer);
+        reject(err);
+      });
+      child.on('close', (code) => {
+        clearTimeout(timeoutTimer);
+        if (outLineBuf) handleLine(outLineBuf);
+        if (errLineBuf) handleLine(errLineBuf);
+        resolve({ stdout: stdoutBuf, stderr: stderrBuf, exitCode: code ?? 1 });
+      });
     });
+
+    if (exitCode !== 0 && !stdout.trim()) {
+      const cleanReason =
+        stderr
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter((l) => l.startsWith('ERROR:'))
+          .join(' ')
+          .replace(/See\s+https?:\/\/\S+.*$/i, '')
+          .trim() || stderr.trim() || `yt-dlp terminó con código ${exitCode}.`;
+      await cleanup();
+      return { ok: false, reason: cleanReason };
+    }
 
     const lines = stdout
       .split(/\r?\n/)
@@ -476,6 +629,8 @@ async function runYtDlpDownload(
     const mimeType =
       ext === '.webm' ? 'video/webm' : ext === '.mov' ? 'video/quicktime' : 'video/mp4';
 
+    onProgress?.(96, 'Video listo, cargando en el editor...');
+
     return {
       ok: true,
       filePath: downloadedPath,
@@ -486,24 +641,10 @@ async function runYtDlpDownload(
     };
   } catch (err) {
     await cleanup();
-    const stderr =
-      err && typeof err === 'object' && 'stderr' in err
-        ? String((err as { stderr?: unknown }).stderr || '')
-        : '';
-    const rawMsg =
-      stderr.trim() || (err instanceof Error ? err.message : 'Error ejecutando yt-dlp.');
-    const cleanReason =
-      rawMsg
-        .split(/\r?\n/)
-        .map((l) => l.trim())
-        .filter((l) => l.startsWith('ERROR:'))
-        .join(' ')
-        .replace(/See\s+https?:\/\/\S+.*$/i, '')
-        .trim() || rawMsg;
-
+    const rawMsg = err instanceof Error ? err.message : 'Error ejecutando yt-dlp.';
     return {
       ok: false,
-      reason: cleanReason,
+      reason: rawMsg,
     };
   }
 }
@@ -826,6 +967,307 @@ export async function startServer(options: StartServerOptions = {}) {
       platform: process.platform,
       developer: 'Kelly Benjamin De La Cruz',
     });
+  });
+
+  interface ImportUrlJob {
+    id: string;
+    status: 'running' | 'ready' | 'blocked' | 'error';
+    percent: number;
+    label: string;
+    result?: YtDlpResult;
+    blocked?: {
+      code: 'YOUTUBE_BOT_BLOCK';
+      videoId: string;
+      title: string;
+      author: string;
+      thumbnailUrl: string;
+      embedUrl: string;
+      watchUrl: string;
+      reason: string;
+    };
+    error?: string;
+  }
+
+  const importUrlJobs = new Map<string, ImportUrlJob>();
+
+  const scheduleImportJobCleanup = (jobId: string) => {
+    setTimeout(() => {
+      const existing = importUrlJobs.get(jobId);
+      if (existing) {
+        if (existing.result) {
+          void existing.result.cleanup();
+        }
+        importUrlJobs.delete(jobId);
+      }
+    }, 10 * 60 * 1000).unref();
+  };
+
+  const runDirectDownloadToTemp = async (
+    targetUrl: string,
+    onProgress: (pct: number, label: string) => void,
+    depth = 0
+  ): Promise<{ ok: true; result: YtDlpResult } | { ok: false; error: string }> => {
+    if (depth > 2) {
+      return { ok: false, error: 'No se encontró un archivo de video reproducible en esa URL.' };
+    }
+    const normalized = normalizeDirectVideoUrl(targetUrl);
+    const check = validateExternalUrl(normalized);
+    if (!check.ok) {
+      return { ok: false, error: check.error };
+    }
+    const parsed = check.url;
+    const isLikelyDirectMedia = /\.(mp4|webm|mov|m4v)(\?.*)?$/i.test(parsed.pathname);
+
+    if (!isLikelyDirectMedia) {
+      const ytDlpResult = await runYtDlpDownload(normalized, [], onProgress);
+      if (ytDlpResult.ok) {
+        return { ok: true, result: ytDlpResult };
+      }
+    }
+
+    onProgress(12, 'Conectando con servidor remoto...');
+    const upstream = await fetch(normalized, {
+      redirect: 'follow',
+      headers: {
+        'User-Agent': BROWSER_UA,
+        Accept: 'video/mp4,video/webm,video/*;q=0.9,*/*;q=0.8',
+        Referer: parsed.origin,
+      },
+      signal: AbortSignal.timeout(45000),
+    });
+
+    if (!upstream.ok || !upstream.body) {
+      return {
+        ok: false,
+        error: `El servidor remoto (${parsed.hostname}) respondió con estado ${upstream.status}.`,
+      };
+    }
+
+    const contentType = (upstream.headers.get('content-type') || '').toLowerCase();
+    if (contentType.includes('text/html') || contentType.includes('application/xhtml')) {
+      const html = await upstream.text();
+      const ogMatch =
+        html.match(/<meta[^>]+property=["']og:video(?::secure_url|:url)?["'][^>]+content=["']([^"']+)["']/i) ||
+        html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:video(?::secure_url|:url)?["']/i) ||
+        html.match(/<video[^>]+src=["']([^"']+)["']/i) ||
+        html.match(/<source[^>]+src=["']([^"']+)["']/i);
+      if (ogMatch && ogMatch[1]) {
+        const resolved = new URL(ogMatch[1], parsed.href).toString();
+        return runDirectDownloadToTemp(resolved, onProgress, depth + 1);
+      }
+      return {
+        ok: false,
+        error: 'La URL devolvió una página web y yt-dlp no encontró un flujo de video descargable público.',
+      };
+    }
+
+    const totalBytes = Number(upstream.headers.get('content-length') || 0);
+    if (totalBytes > MAX_VIDEO_BYTES) {
+      return { ok: false, error: 'El video supera el límite de 450 MB.' };
+    }
+
+    const workDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'direct_ss_'));
+    const cleanup = async () => {
+      await fs.promises.rm(workDir, { recursive: true, force: true }).catch(() => {});
+    };
+
+    const fileName = parsed.pathname.split('/').pop() || `video_${Date.now()}.mp4`;
+    const filePath = path.join(workDir, 'clip.mp4');
+
+    try {
+      const reader = upstream.body.getReader();
+      const out = fs.createWriteStream(filePath);
+      let loaded = 0;
+
+      await new Promise<void>((resolve, reject) => {
+        out.on('error', reject);
+        (async () => {
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              if (value && value.byteLength > 0) {
+                loaded += value.byteLength;
+                if (loaded > MAX_VIDEO_BYTES) {
+                  throw new Error('El video supera el límite de 450 MB.');
+                }
+                if (!out.write(Buffer.from(value))) {
+                  await new Promise<void>((r) => out.once('drain', r));
+                }
+                if (totalBytes > 0) {
+                  const pct = Math.min(95, Math.max(12, Math.round(12 + (loaded / totalBytes) * 83)));
+                  onProgress(
+                    pct,
+                    `Descargando MP4... ${pct}% (${(loaded / (1024 * 1024)).toFixed(1)} MB)`
+                  );
+                } else {
+                  const pseudo = Math.min(90, 15 + Math.round((loaded / (1024 * 1024)) * 2));
+                  onProgress(
+                    pseudo,
+                    `Descargando MP4... ${(loaded / (1024 * 1024)).toFixed(1)} MB`
+                  );
+                }
+              }
+            }
+            out.end(resolve);
+          } catch (err) {
+            out.destroy();
+            reject(err);
+          }
+        })();
+      });
+
+      const mimeType =
+        contentType.startsWith('video/') || contentType.startsWith('application/octet-stream')
+          ? contentType.split(';')[0]
+          : 'video/mp4';
+
+      onProgress(96, 'Video listo, cargando en el editor...');
+      return {
+        ok: true,
+        result: {
+          ok: true,
+          filePath,
+          title: fileName,
+          extractor: 'direct-proxy',
+          mimeType,
+          cleanup,
+        },
+      };
+    } catch (err) {
+      await cleanup();
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : 'Error descargando el archivo remoto.',
+      };
+    }
+  };
+
+  app.post('/api/import-url/start', (req: Request, res: Response) => {
+    const body = (req.body || {}) as { url?: string };
+    const rawUrl = (body.url || '').trim();
+    if (!rawUrl) {
+      res.status(400).json({ error: 'Ingresa una URL válida.' });
+      return;
+    }
+
+    const check = validateExternalUrl(rawUrl);
+    if (!check.ok) {
+      res.status(check.status).json({ error: check.error });
+      return;
+    }
+
+    const jobId = crypto.randomBytes(12).toString('hex');
+    const job: ImportUrlJob = {
+      id: jobId,
+      status: 'running',
+      percent: 2,
+      label: 'Iniciando descarga...',
+    };
+    importUrlJobs.set(jobId, job);
+    scheduleImportJobCleanup(jobId);
+
+    const updateJob = (pct: number, label: string) => {
+      if (job.status !== 'running') return;
+      job.percent = Math.max(job.percent, Math.min(98, Math.round(pct)));
+      job.label = label;
+    };
+
+    (async () => {
+      try {
+        const ytId = extractYouTubeId(rawUrl);
+        if (ytId) {
+          const oembedPromise = fetchYouTubeOEmbed(ytId);
+          let attempt = IS_WINDOWS
+            ? await runYtDlpDownload(rawUrl, ['-4'], updateJob)
+            : await runYtDlpDownload(
+                rawUrl,
+                ['-4', '--extractor-args', 'youtube:player_client=tv_simply,android_vr,ios,web'],
+                updateJob
+              );
+
+          if (!attempt.ok && IS_WINDOWS) {
+            updateJob(10, 'Reintentando con cliente alternativo...');
+            attempt = await runYtDlpDownload(
+              rawUrl,
+              ['-4', '--extractor-args', 'youtube:player_client=tv_simply,android_vr,ios,web'],
+              updateJob
+            );
+          }
+
+          const oembed = await oembedPromise;
+          if (attempt.ok) {
+            if (!attempt.title || attempt.title.startsWith('Video_')) {
+              attempt.title = oembed.title;
+            }
+            job.result = attempt;
+            job.percent = 96;
+            job.label = 'Descarga completada, cargando en el editor...';
+            job.status = 'ready';
+            return;
+          }
+
+          job.status = 'blocked';
+          job.blocked = {
+            code: 'YOUTUBE_BOT_BLOCK',
+            videoId: ytId,
+            title: oembed.title,
+            author: oembed.author,
+            thumbnailUrl: oembed.thumbnailUrl,
+            embedUrl: `https://www.youtube.com/embed/${ytId}?rel=0&playsinline=1`,
+            watchUrl: `https://www.youtube.com/watch?v=${ytId}`,
+            reason: attempt.reason,
+          };
+          return;
+        }
+
+        const direct = await runDirectDownloadToTemp(rawUrl, updateJob);
+        if (direct.ok) {
+          job.result = direct.result;
+          job.percent = 96;
+          job.label = 'Descarga completada, cargando en el editor...';
+          job.status = 'ready';
+        } else {
+          job.status = 'error';
+          job.error = direct.error;
+        }
+      } catch (err) {
+        job.status = 'error';
+        job.error =
+          err instanceof Error
+            ? err.message
+            : 'Error interno al importar el video desde la URL.';
+      }
+    })();
+
+    res.json({ jobId });
+  });
+
+  app.get('/api/import-url/:jobId/status', (req: Request, res: Response) => {
+    const job = importUrlJobs.get(String(req.params.jobId || ''));
+    if (!job) {
+      res.status(404).json({ error: 'Trabajo de descarga no encontrado.' });
+      return;
+    }
+    res.json({
+      status: job.status,
+      percent: job.percent,
+      label: job.label,
+      blocked: job.blocked,
+      error: job.error,
+    });
+  });
+
+  app.get('/api/import-url/:jobId/file', async (req: Request, res: Response) => {
+    const jobId = String(req.params.jobId || '');
+    const job = importUrlJobs.get(jobId);
+    if (!job || job.status !== 'ready' || !job.result) {
+      res.status(404).json({ error: 'Archivo aún no disponible o expirado.' });
+      return;
+    }
+    const result = job.result;
+    importUrlJobs.delete(jobId);
+    await streamYtDlpResult(res, result, `ytdlp-${result.extractor}`);
   });
 
   app.post('/api/import-url', async (req: Request, res: Response) => {

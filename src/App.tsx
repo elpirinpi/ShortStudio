@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { ClipEditorHandle, ClipEditorWorkspace } from './components/ClipEditorWorkspace';
 import { CreatePage, StagedMediaInfo } from './components/CreatePage';
 import { LoginScreen } from './components/LoginScreen';
+import { ManualClipModal } from './components/ManualClipModal';
 import { ProjectsPage } from './components/ProjectsPage';
 import { RecordModal } from './components/RecordModal';
 import { ResultsPage } from './components/ResultsPage';
@@ -52,6 +53,8 @@ import {
 import {
   analyzeVideoLocally,
   createDemoProject,
+  createManualClip,
+  createManualProjectShell,
   extractVideoMetadataAndThumbnail,
   transcribeVideoRange,
   transcriptToSubtitles,
@@ -101,6 +104,11 @@ export default function App() {
   const [retranscribeStatus, setRetranscribeStatus] = useState('');
 
   const [recordModalOpen, setRecordModalOpen] = useState(false);
+  const [manualClipProjectId, setManualClipProjectId] = useState<string | null>(null);
+  const [manualCreating, setManualCreating] = useState(false);
+  const [manualProgressPct, setManualProgressPct] = useState(0);
+  const [manualProgressLabel, setManualProgressLabel] = useState('');
+  const [manualModalError, setManualModalError] = useState('');
   const [ytBlockedInfo, setYtBlockedInfo] = useState<YouTubeBlockedInfo | null>(null);
   const [connectorStatus, setConnectorStatus] = useState<ConnectorStatus>({ connected: false });
   const [connectorDownloading, setConnectorDownloading] = useState(false);
@@ -437,38 +445,106 @@ export default function App() {
     async (
       url: string
     ): Promise<{ ok: boolean; blocked?: YouTubeBlockedInfo; error?: string }> => {
-      const res = await fetch('/api/import-url', {
+      let maxPercent = 3;
+      const pushProgress = (pct: number, label?: string) => {
+        maxPercent = Math.max(maxPercent, Math.min(100, Math.round(pct)));
+        setUrlProgressPercent(maxPercent);
+        if (label) setUrlStatusText(label);
+      };
+
+      const startRes = await fetch('/api/import-url/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
       });
 
-      const contentType = (res.headers.get('content-type') || '').toLowerCase();
-      if (!res.ok || contentType.includes('application/json')) {
-        const data = (await res.json().catch(() => ({}))) as Partial<YouTubeBlockedInfo> & {
-          code?: string;
+      if (!startRes.ok) {
+        const errData = (await startRes.json().catch(() => ({}))) as { error?: string };
+        return {
+          ok: false,
+          error: errData.error || `El servidor respondió con estado ${startRes.status}.`,
+        };
+      }
+
+      const { jobId } = (await startRes.json().catch(() => ({}))) as { jobId?: string };
+      if (!jobId) {
+        return { ok: false, error: 'El servidor no devolvió un identificador de descarga.' };
+      }
+
+      // Poll live download progress from yt-dlp / FFmpeg / direct stream
+      let transientErrors = 0;
+      while (true) {
+        await new Promise((r) => setTimeout(r, 350));
+        const stRes = await fetch(`/api/import-url/${encodeURIComponent(jobId)}/status`, {
+          cache: 'no-store',
+        });
+        if (!stRes.ok) {
+          transientErrors += 1;
+          if (stRes.status === 404 || transientErrors >= 4) {
+            const errData = (await stRes.json().catch(() => ({}))) as { error?: string };
+            return {
+              ok: false,
+              error: errData.error || `Error consultando progreso (${stRes.status}).`,
+            };
+          }
+          continue;
+        }
+        transientErrors = 0;
+
+        const st = (await stRes.json()) as {
+          status: 'running' | 'ready' | 'blocked' | 'error';
+          percent?: number;
+          label?: string;
+          blocked?: Partial<YouTubeBlockedInfo> & { videoId?: string };
           error?: string;
         };
-        if (data.code === 'YOUTUBE_BOT_BLOCK' && data.videoId) {
+
+        if (typeof st.percent === 'number') {
+          pushProgress(st.percent, st.label);
+        } else if (st.label) {
+          setUrlStatusText(st.label);
+        }
+
+        const blockedVideoId = st.blocked?.videoId;
+        if (st.status === 'blocked' && blockedVideoId && st.blocked) {
+          const b = st.blocked;
           return {
             ok: false,
             blocked: {
               url,
-              videoId: data.videoId,
-              title: data.title || `YouTube_${data.videoId}`,
-              author: data.author || 'YouTube',
+              videoId: blockedVideoId,
+              title: b.title || `YouTube_${blockedVideoId}`,
+              author: b.author || 'YouTube',
               thumbnailUrl:
-                data.thumbnailUrl || `https://i.ytimg.com/vi/${data.videoId}/hqdefault.jpg`,
+                b.thumbnailUrl || `https://i.ytimg.com/vi/${blockedVideoId}/hqdefault.jpg`,
               embedUrl:
-                data.embedUrl || `https://www.youtube.com/embed/${data.videoId}?rel=0&playsinline=1`,
-              watchUrl: data.watchUrl || `https://www.youtube.com/watch?v=${data.videoId}`,
-              reason: data.reason || 'YouTube solicitó verificación anti-bot.',
+                b.embedUrl || `https://www.youtube.com/embed/${blockedVideoId}?rel=0&playsinline=1`,
+              watchUrl: b.watchUrl || `https://www.youtube.com/watch?v=${blockedVideoId}`,
+              reason: b.reason || 'YouTube solicitó verificación anti-bot.',
             },
           };
         }
+
+        if (st.status === 'error') {
+          return {
+            ok: false,
+            error: st.error || 'No se pudo importar el video desde esa URL.',
+          };
+        }
+
+        if (st.status === 'ready') {
+          break;
+        }
+      }
+
+      // Download completed file into browser memory / editor
+      pushProgress(Math.max(maxPercent, 96), 'Transfiriendo MP4 al editor...');
+      const res = await fetch(`/api/import-url/${encodeURIComponent(jobId)}/file`);
+      if (!res.ok) {
+        const errData = (await res.json().catch(() => ({}))) as { error?: string };
         return {
           ok: false,
-          error: data.error || data.reason || `El servidor respondió con estado ${res.status}.`,
+          error: errData.error || `No se pudo transferir el video (${res.status}).`,
         };
       }
 
@@ -485,10 +561,10 @@ export default function App() {
             chunks.push(value);
             loaded += value.byteLength;
             if (totalBytes > 0) {
-              const pct = Math.min(100, Math.max(5, Math.round((loaded / totalBytes) * 100)));
-              setUrlProgressPercent(pct);
-              setUrlStatusText(
-                `Descargando MP4... ${pct}% (${(loaded / (1024 * 1024)).toFixed(1)} / ${(totalBytes / (1024 * 1024)).toFixed(1)} MB)`
+              const transferPct = 96 + Math.round((loaded / totalBytes) * 3);
+              pushProgress(
+                Math.min(99, transferPct),
+                `Cargando MP4 en el editor... (${(loaded / (1024 * 1024)).toFixed(1)} / ${(totalBytes / (1024 * 1024)).toFixed(1)} MB)`
               );
             }
           }
@@ -499,10 +575,12 @@ export default function App() {
       } else {
         blob = await res.blob();
       }
+
       if (blob.size === 0) {
         return { ok: false, error: 'El video descargado está vacío.' };
       }
-      setUrlProgressPercent(100);
+
+      pushProgress(100, 'Video listo en el editor');
       const headerTitle = res.headers.get('x-video-title');
       const decodedTitle = headerTitle ? decodeURIComponent(headerTitle) : '';
       const rawName = decodedTitle
@@ -565,11 +643,11 @@ export default function App() {
         }
 
         // 2. Embedded PC backend (in Desktop .exe) or server extractor (in Web)
-        setUrlProgressPercent(10);
+        setUrlProgressPercent(3);
         setUrlStatusText(
           isDesktopApp
-            ? 'Descargando MP4 1080p con yt-dlp integrado...'
-            : 'Intentando descarga directa desde el servidor...'
+            ? 'Iniciando descarga MP4 1080p con motor integrado...'
+            : 'Iniciando descarga desde el servidor...'
         );
         const result = await importVideoViaBackend(url);
         if (result.ok) {
@@ -692,6 +770,163 @@ export default function App() {
       setAnalyzing(false);
     }
   }, [analyzing, appSettings.aiEngine, appSettings.whisperModel, authSession?.user?.id, notify, projectConfig, stagedMedia]);
+
+  const handleStartManualClips = useCallback(async () => {
+    if (!stagedMedia || analyzing) return;
+    setCreateError('');
+    setAnalyzing(true);
+    setAnalysisProgress(25);
+    setAnalysisStep('Guardando video para edición manual...');
+
+    try {
+      const mediaBlobId = `media_${Date.now()}`;
+      await saveMediaBlob(mediaBlobId, stagedMedia.file, stagedMedia.name);
+      setAnalysisProgress(70);
+      setAnalysisStep('Preparando proyecto manual...');
+
+      const cleanTitle = stagedMedia.name.replace(/\.[^/.]+$/, '') || 'Proyecto Manual';
+      const project = await createManualProjectShell({
+        blob: stagedMedia.file,
+        title: cleanTitle,
+        mediaBlobId,
+        config: projectConfig,
+      });
+
+      await saveProject(project);
+      if (authSession?.user?.id) {
+        void upsertCloudProject(authSession.user.id, project);
+      }
+      setProjects((prev) => [project, ...prev]);
+      setActiveProjectId(project.id);
+      setActiveClipId(null);
+      setStagedMedia(null);
+      setActiveView('results');
+      setManualModalError('');
+      setManualClipProjectId(project.id);
+      notify('Selecciona los puntos de corte para tu primer clip manual');
+    } catch (err) {
+      setCreateError(
+        err instanceof Error ? err.message : 'No se pudo preparar el video para edición manual.'
+      );
+    } finally {
+      setAnalyzing(false);
+      setAnalysisProgress(0);
+      setAnalysisStep('');
+    }
+  }, [analyzing, authSession?.user?.id, notify, projectConfig, stagedMedia]);
+
+  const handleOpenManualClipModal = useCallback((projectId: string) => {
+    setActiveProjectId(projectId);
+    setManualModalError('');
+    setManualProgressPct(0);
+    setManualProgressLabel('');
+    setManualClipProjectId(projectId);
+  }, []);
+
+  const handleCreateManualClip = useCallback(
+    async (params: {
+      projectId: string;
+      start: number;
+      end: number;
+      title: string;
+      transcribeAudio: boolean;
+      trackFaces: boolean;
+      openInEditor: boolean;
+    }) => {
+      const targetProj = projects.find((p) => p.id === params.projectId);
+      if (!targetProj || manualCreating) return;
+
+      setManualModalError('');
+      setManualCreating(true);
+      setManualProgressPct(5);
+      setManualProgressLabel('Preparando clip manual...');
+
+      try {
+        const record = targetProj.mediaBlobId
+          ? await getMediaBlob(targetProj.mediaBlobId)
+          : null;
+        const source: Blob | string | null = record?.blob || activeMediaUrl;
+
+        const { clip, addedTranscript } = await createManualClip({
+          project: targetProj,
+          start: params.start,
+          end: params.end,
+          title: params.title,
+          source,
+          whisperModel: appSettings.whisperModel,
+          transcribeAudio: params.transcribeAudio,
+          trackFaces: params.trackFaces,
+          onProgress: (pct, msg) => {
+            setManualProgressPct(pct);
+            setManualProgressLabel(msg);
+          },
+        });
+
+        const mergedTranscript =
+          addedTranscript.length > 0
+            ? [...targetProj.transcript, ...addedTranscript].sort((a, b) => a.start - b.start)
+            : targetProj.transcript;
+
+        const updatedProj: ClipProject = {
+          ...targetProj,
+          updatedAt: new Date().toISOString(),
+          transcript: mergedTranscript,
+          clips: [...targetProj.clips, clip],
+        };
+
+        await saveProject(updatedProj).catch(() => {});
+        if (authSession?.user?.id) {
+          void upsertCloudProject(authSession.user.id, updatedProj);
+        }
+
+        setProjects((prev) => prev.map((p) => (p.id === updatedProj.id ? updatedProj : p)));
+        setActiveProjectId(updatedProj.id);
+        setActiveClipId(clip.id);
+        setManualClipProjectId(null);
+
+        if (params.openInEditor) {
+          setActiveView('editor');
+        }
+        notify(`Clip manual creado (${clip.duration.toFixed(1)}s)`);
+      } catch (err) {
+        setManualModalError(
+          err instanceof Error ? err.message : 'No se pudo crear el clip manual.'
+        );
+      } finally {
+        setManualCreating(false);
+        setManualProgressPct(0);
+        setManualProgressLabel('');
+      }
+    },
+    [activeMediaUrl, appSettings.whisperModel, authSession?.user?.id, manualCreating, notify, projects]
+  );
+
+  const handleDeleteClip = useCallback(
+    (projectId: string, clipId: string) => {
+      setProjects((prev) =>
+        prev.map((proj) => {
+          if (proj.id !== projectId) return proj;
+          const remainingClips = proj.clips.filter((c) => c.id !== clipId);
+          const updated: ClipProject = {
+            ...proj,
+            updatedAt: new Date().toISOString(),
+            clips: remainingClips,
+          };
+          saveProject(updated).catch(() => {});
+          if (authSession?.user?.id) {
+            void upsertCloudProject(authSession.user.id, updated);
+          }
+          if (activeClipId === clipId) {
+            setActiveClipId(remainingClips[0]?.id ?? null);
+          }
+          return updated;
+        })
+      );
+      setScheduledPosts((prev) => prev.filter((post) => post.clipId !== clipId));
+      notify('Clip eliminado');
+    },
+    [activeClipId, authSession?.user?.id, notify]
+  );
 
   const handleRunDemoProject = useCallback(async () => {
     const demoProj = createDemoProject(projectConfig);
@@ -1073,6 +1308,7 @@ export default function App() {
           onUpdateConfig={handleUpdateConfig}
           onChangeAiEngine={handleChangeAiEngine}
           onAnalyze={handleAnalyze}
+          onStartManualClips={handleStartManualClips}
           onRunDemoProject={handleRunDemoProject}
         />
       )}
@@ -1096,7 +1332,9 @@ export default function App() {
           retranscribing={retranscribing}
           retranscribeStatus={retranscribeStatus}
           onRetranscribeProject={handleRetranscribeProject}
+          onOpenManualClipModal={handleOpenManualClipModal}
           onRenameClip={handleRenameClip}
+          onDeleteClip={handleDeleteClip}
           onEditClipInStudio={handleOpenEditor}
           onScheduleClip={handleScheduleClip}
           onBackToProjects={() => setActiveView('projects')}
@@ -1111,6 +1349,7 @@ export default function App() {
           mediaUrl={activeMediaUrl}
           whisperModel={appSettings.whisperModel}
           onSelectClip={(cid) => setActiveClipId(cid)}
+          onOpenManualClipModal={handleOpenManualClipModal}
           onSaveClipEdits={handleSaveClipEdits}
           onBackToResults={() => setActiveView(activeProject ? 'results' : 'projects')}
           onNotify={notify}
@@ -1156,6 +1395,23 @@ export default function App() {
           handleSelectFile(file);
           setActiveView('create');
         }}
+      />
+
+      <ManualClipModal
+        open={Boolean(manualClipProjectId)}
+        project={projects.find((p) => p.id === manualClipProjectId) || null}
+        mediaUrl={manualClipProjectId === activeProjectId ? activeMediaUrl : null}
+        creating={manualCreating}
+        progressPercent={manualProgressPct}
+        progressLabel={manualProgressLabel}
+        errorMsg={manualModalError}
+        onClose={() => {
+          if (!manualCreating) {
+            setManualClipProjectId(null);
+            setManualModalError('');
+          }
+        }}
+        onCreateClip={handleCreateManualClip}
       />
 
       <YouTubeImportModal
