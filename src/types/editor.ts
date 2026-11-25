@@ -14,6 +14,23 @@ export interface SpeechSegment {
   end: number;
 }
 
+/** Marca sugerida de muletilla (N3): corte reversible desde los ajustes. */
+export interface FillerMark {
+  start: number;
+  end: number;
+  text: string;
+  enabled: boolean;
+}
+
+/** Medición loudnorm de la primera pasada (N3), para nivelar en dos pasadas. */
+export interface LoudnormMeasuredState {
+  inputI: number;
+  inputTp: number;
+  inputLra: number;
+  inputThresh: number;
+  targetOffset: number;
+}
+
 export interface AudioProfile {
   mediaBlobId: string;
   durationSec: number;
@@ -81,6 +98,17 @@ export interface EditorSettings {
   silenceMinSec?: number;
   silencePaddingSec?: number;
   speechSegments?: SpeechSegment[];
+
+  // N3 — Limpieza automática de audio en un clic (todo reversible)
+  audioCleanupEnabled?: boolean;
+  audioNormalizeEnabled?: boolean;
+  audioDenoiseEnabled?: boolean;
+  audioDenoiseStrength?: number;
+  loudnormMeasured?: LoudnormMeasuredState | null;
+  fillerCutEnabled?: boolean;
+  fillerWords?: string;
+  fillerMarks?: FillerMark[];
+  fillerBaseSegments?: SpeechSegment[];
 
   transitionIn?: TransitionInType;
 
@@ -254,6 +282,16 @@ export const DEFAULT_SETTINGS: EditorSettings = {
   silenceMinSec: 0.45,
   silencePaddingSec: 0.09,
   speechSegments: [],
+
+  audioCleanupEnabled: false,
+  audioNormalizeEnabled: true,
+  audioDenoiseEnabled: true,
+  audioDenoiseStrength: 40,
+  loudnormMeasured: null,
+  fillerCutEnabled: false,
+  fillerWords: 'eh, mmm, em, este, o sea, es decir',
+  fillerMarks: [],
+  fillerBaseSegments: [],
 
   transitionIn: 'none',
 

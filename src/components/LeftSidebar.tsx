@@ -30,6 +30,10 @@ interface LeftSidebarProps {
   onTrimStartChange: (val: number) => void;
   onTrimEndChange: (val: number) => void;
   onDetectSilences?: () => void;
+  onRunAudioCleanup?: () => void;
+  cleanupAnalyzing?: boolean;
+  onDetectFillers?: () => void;
+  onToggleFillerMark?: (index: number, enabled: boolean) => void;
   onResetFraming: () => void;
   onResetColor: () => void;
   onRemoveBgm: () => void;
@@ -54,6 +58,10 @@ export function LeftSidebar({
   onTrimStartChange,
   onTrimEndChange,
   onDetectSilences,
+  onRunAudioCleanup,
+  cleanupAnalyzing = false,
+  onDetectFillers,
+  onToggleFillerMark,
   onResetFraming,
   onResetColor,
   onRemoveBgm,
@@ -559,6 +567,134 @@ export function LeftSidebar({
                     s silencios recortados
                   </p>
                 )}
+            </section>
+
+            <section className="p-4 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xs font-semibold text-slate-200">
+                  Limpiar y apretar (Audio)
+                </h2>
+                <input
+                  type="checkbox"
+                  checked={Boolean(settings.audioCleanupEnabled)}
+                  onChange={(e) => onUpdateSetting('audioCleanupEnabled', e.target.checked)}
+                  className="w-4 h-4 accent-emerald-500 cursor-pointer"
+                  aria-label="Aplicar limpieza de audio al exportar"
+                />
+              </div>
+              <p className="text-[11px] leading-relaxed text-slate-400">
+                Recorta silencios, sugiere quitar muletillas y nivela el volumen.
+                Todo es reversible: el video original no se toca.
+              </p>
+
+              {onRunAudioCleanup && (
+                <button
+                  type="button"
+                  disabled={!hasMediaOrDemo || cleanupAnalyzing}
+                  onClick={onRunAudioCleanup}
+                  className="w-full inline-flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-medium text-slate-100 bg-emerald-600/80 hover:bg-emerald-600 disabled:opacity-45 cursor-pointer transition-colors"
+                >
+                  {cleanupAnalyzing ? (
+                    <LoaderCircle className="w-3.5 h-3.5 animate-spin text-emerald-200" />
+                  ) : (
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-200" />
+                  )}
+                  <span>{cleanupAnalyzing ? 'Analizando audio...' : 'Limpiar y apretar'}</span>
+                </button>
+              )}
+
+              <label className="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
+                <span>Nivelar volumen (loudnorm)</span>
+                <input
+                  type="checkbox"
+                  checked={settings.audioNormalizeEnabled !== false}
+                  onChange={(e) => onUpdateSetting('audioNormalizeEnabled', e.target.checked)}
+                  className="w-4 h-4 accent-emerald-500 cursor-pointer"
+                />
+              </label>
+              <label className="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
+                <span>Reducir ruido de fondo</span>
+                <input
+                  type="checkbox"
+                  checked={Boolean(settings.audioDenoiseEnabled)}
+                  onChange={(e) => onUpdateSetting('audioDenoiseEnabled', e.target.checked)}
+                  className="w-4 h-4 accent-emerald-500 cursor-pointer"
+                />
+              </label>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-300">Fuerza de reducción de ruido</span>
+                  <span className="font-mono-tabular text-emerald-400">
+                    {settings.audioDenoiseStrength ?? 40}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={settings.audioDenoiseStrength ?? 40}
+                  onChange={(e) =>
+                    onUpdateSetting('audioDenoiseStrength', Number(e.target.value))
+                  }
+                />
+              </div>
+
+              <div className="border-t border-white/[0.06] pt-3 flex flex-col gap-2">
+                <label className="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
+                  <span>Quitar muletillas detectadas</span>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(settings.fillerCutEnabled)}
+                    onChange={(e) => onUpdateSetting('fillerCutEnabled', e.target.checked)}
+                    className="w-4 h-4 accent-emerald-500 cursor-pointer"
+                  />
+                </label>
+                <input
+                  type="text"
+                  value={settings.fillerWords ?? ''}
+                  onChange={(e) => onUpdateSetting('fillerWords', e.target.value)}
+                  placeholder="eh, mmm, em, este, o sea, es decir"
+                  className="w-full bg-[#0b0d12] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500/70"
+                  aria-label="Lista de muletillas (separadas por comas)"
+                />
+                {onDetectFillers && (
+                  <button
+                    type="button"
+                    disabled={!hasMediaOrDemo}
+                    onClick={onDetectFillers}
+                    className="w-full inline-flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-medium text-slate-100 bg-[#181c25] hover:bg-[#202633] disabled:opacity-45 cursor-pointer transition-colors"
+                  >
+                    <Scissors className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Detectar muletillas en la transcripción</span>
+                  </button>
+                )}
+                {settings.fillerMarks && settings.fillerMarks.length > 0 && (
+                  <div className="flex flex-col gap-1 max-h-44 overflow-y-auto pr-1">
+                    {settings.fillerMarks.slice(0, 40).map((mark, idx) => (
+                      <label
+                        key={`${mark.start}-${idx}`}
+                        className="flex items-center justify-between gap-2 text-[11px] text-slate-300 cursor-pointer bg-white/[0.03] rounded-lg px-2 py-1"
+                      >
+                        <span className="truncate">
+                          «{mark.text}» · {mark.start.toFixed(1)}s–{mark.end.toFixed(1)}s
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={mark.enabled}
+                          onChange={(e) => onToggleFillerMark?.(idx, e.target.checked)}
+                          className="w-3.5 h-3.5 accent-emerald-500 cursor-pointer shrink-0"
+                          aria-label={`Quitar muletilla ${mark.text} en ${mark.start.toFixed(1)} segundos`}
+                        />
+                      </label>
+                    ))}
+                    <p className="text-[11px] font-mono-tabular text-emerald-400">
+                      {settings.fillerMarks.filter((m) => m.enabled).length} de{' '}
+                      {settings.fillerMarks.length} muletillas se quitarán al exportar
+                    </p>
+                  </div>
+                )}
+              </div>
             </section>
 
             <section className="p-4 flex flex-col gap-3">
