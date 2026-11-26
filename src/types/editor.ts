@@ -110,6 +110,26 @@ export interface EditorSettings {
   fillerMarks?: FillerMark[];
   fillerBaseSegments?: SpeechSegment[];
 
+  // N4 — «Terminar mi clip»: acabado automático OPCIONAL al exportar (FFmpeg
+  // del servidor). Todo desactivado por defecto y reversible: solo se aplica
+  // si la usuaria activa el interruptor general y cada efecto por separado.
+  finishClipEnabled?: boolean;
+  finishZoomEnabled?: boolean;
+  /** Intensidad del zoom de énfasis, 100..140 (%). */
+  finishZoomIntensity?: number;
+  finishKeywordsEnabled?: boolean;
+  /** Palabras clave a resaltar en subtítulos y a usar como énfasis (texto libre). */
+  finishKeywords?: string;
+  finishDuckingEnabled?: boolean;
+  /** Cuánto baja la música de fondo cuando hay voz, 0..100. */
+  finishDuckingAmount?: number;
+  finishSfxEnabled?: boolean;
+  /** Volumen del efecto sutil en cambios de escena, 0..100. */
+  finishSfxVolume?: number;
+  /** Calculados al exportar (tiempos de salida); no se editan a mano. */
+  finishZoomMoments?: Array<{ start: number; end: number }>;
+  finishSfxTimes?: number[];
+
   transitionIn?: TransitionInType;
 
   hookEnabled?: boolean;
@@ -292,6 +312,16 @@ export const DEFAULT_SETTINGS: EditorSettings = {
   fillerWords: 'eh, mmm, em, este, o sea, es decir',
   fillerMarks: [],
   fillerBaseSegments: [],
+
+  finishClipEnabled: false,
+  finishZoomEnabled: true,
+  finishZoomIntensity: 115,
+  finishKeywordsEnabled: true,
+  finishKeywords: '',
+  finishDuckingEnabled: true,
+  finishDuckingAmount: 60,
+  finishSfxEnabled: false,
+  finishSfxVolume: 35,
 
   transitionIn: 'none',
 
