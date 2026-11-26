@@ -13,6 +13,13 @@ import { promisify } from 'node:util';
 import { Innertube } from 'youtubei.js';
 import { buildAssSubtitles, type AssBuilderSettings, type AssSubtitleCue } from './server/assBuilder.ts';
 import { cleanupOrphanedTempFiles } from './server/cleanup.ts';
+import {
+  buildAudioCleanupFilters,
+  normalizeAudioCleanupOptions,
+  parseFfmpegDuration,
+  parseLoudnormMeasured,
+  parseSilenceDetectOutput,
+} from './server/audioCleanup.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -2549,6 +2556,82 @@ export async function startServer(options: StartServerOptions = {}) {
     }
   });
 
+  // N3 — Análisis de limpieza de audio: silencios (silencedetect) y medición
+  // de volumen (loudnorm, primera pasada) sobre el medio subido al trabajo.
+  // No modifica el medio: solo devuelve datos para que el editor proponga
+  // cortes y ajustes reversibles.
+  app.post('/api/media-job/:jobId/audio-cleanup-analyze', async (req: Request, res: Response) => {
+    const jobDir = resolveSafeJobDir(String(req.params.jobId || ''));
+    if (!jobDir) {
+      res.status(404).json({ error: 'Sesión de audio inválida o expirada.' });
+      return;
+    }
+
+    const inPath = path.resolve(jobDir, 'video.bin');
+    try {
+      if (!fs.existsSync(inPath)) {
+        res.status(400).json({ error: 'No se recibió archivo de video.' });
+        return;
+      }
+      const body = (req.body || {}) as { thresholdDb?: number; minSilenceSec?: number };
+      const thresholdDb = Math.max(
+        -45,
+        Math.min(-22, Number.isFinite(Number(body.thresholdDb)) ? Number(body.thresholdDb) : -34)
+      );
+      const minSilenceSec = Math.max(
+        0.25,
+        Math.min(1.2, Number.isFinite(Number(body.minSilenceSec)) ? Number(body.minSilenceSec) : 0.45)
+      );
+
+      const ffmpegBin = await ensureFfmpeg();
+
+      const silenceRun = await execFileAsync(
+        ffmpegBin,
+        [
+          '-i',
+          inPath,
+          '-vn',
+          '-af',
+          `silencedetect=noise=${thresholdDb}dB:d=${minSilenceSec}`,
+          '-f',
+          'null',
+          '-',
+        ],
+        { timeout: 300_000, maxBuffer: 64 * 1024 * 1024 }
+      ).catch((err: { stderr?: string }) => ({ stderr: err?.stderr || '' }));
+      const silenceStderr = String(silenceRun.stderr || '');
+      const silences = parseSilenceDetectOutput(silenceStderr);
+      const durationSec = parseFfmpegDuration(silenceStderr);
+
+      const loudnormRun = await execFileAsync(
+        ffmpegBin,
+        [
+          '-i',
+          inPath,
+          '-vn',
+          '-af',
+          'loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json',
+          '-f',
+          'null',
+          '-',
+        ],
+        { timeout: 300_000, maxBuffer: 64 * 1024 * 1024 }
+      ).catch((err: { stderr?: string }) => ({ stderr: err?.stderr || '' }));
+      const loudnorm = parseLoudnormMeasured(String(loudnormRun.stderr || ''));
+
+      res.json({ durationSec, silences, loudnorm });
+    } catch (err) {
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? `Error analizando el audio: ${err.message}`
+            : 'No se pudo analizar el audio.',
+      });
+    } finally {
+      await cleanupJobDir(jobDir);
+    }
+  });
+
   app.post('/api/media-job/:jobId/export-ffmpeg', async (req: Request, res: Response) => {
     const jobDir = resolveSafeJobDir(String(req.params.jobId || ''));
     if (!jobDir) {
@@ -2579,6 +2662,17 @@ export async function startServer(options: StartServerOptions = {}) {
           progressColor?: string;
           silenceCutEnabled?: boolean;
           speechSegments?: Array<{ start: number; end: number }>;
+          audioCleanupEnabled?: boolean;
+          audioNormalizeEnabled?: boolean;
+          audioDenoiseEnabled?: boolean;
+          audioDenoiseStrength?: number;
+          loudnormMeasured?: {
+            inputI: number;
+            inputTp: number;
+            inputLra: number;
+            inputThresh: number;
+            targetOffset: number;
+          } | null;
           transitionIn?: 'none' | 'fade' | 'zoom-punch' | 'slide-up';
           hookEnabled?: boolean;
           hookText?: string;
@@ -2828,12 +2922,25 @@ export async function startServer(options: StartServerOptions = {}) {
       if (useVideoAudio) {
         const tempoChain = buildAtempoFilters(speed);
         const volStr = `volume=${(volVideo / 100).toFixed(2)}`;
+        // N3 — Limpieza de audio: afftdn + loudnorm solo si la usuaria lo
+        // activó en el editor; se aplica sobre la voz ya recortada y no
+        // toca la música de fondo.
+        const cleanupFilters = buildAudioCleanupFilters(
+          normalizeAudioCleanupOptions({
+            enabled: Boolean(s.audioCleanupEnabled),
+            normalize: s.audioNormalizeEnabled !== false,
+            denoise: Boolean(s.audioDenoiseEnabled),
+            denoiseStrength: Number(s.audioDenoiseStrength ?? 40),
+            measured: s.loudnormMeasured ?? null,
+          })
+        );
         if (relSegments.length === 1) {
           const aOps = [
             `atrim=start=${relSegments[0].start.toFixed(3)}:end=${relSegments[0].end.toFixed(3)}`,
             'asetpts=PTS-STARTPTS',
             ...tempoChain,
             volStr,
+            ...cleanupFilters,
           ];
           filters.push(`[0:a]${aOps.join(',')}[va]`);
         } else {
@@ -2848,7 +2955,7 @@ export async function startServer(options: StartServerOptions = {}) {
             );
             sliceLabels.push(`[ac${idx}]`);
           }
-          const postOps = [...tempoChain, volStr].join(',');
+          const postOps = [...tempoChain, volStr, ...cleanupFilters].join(',');
           filters.push(`${sliceLabels.join('')}concat=n=${k}:v=0:a=1,${postOps}[va]`);
         }
       }

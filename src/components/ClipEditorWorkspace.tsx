@@ -17,9 +17,17 @@ import {
   getCanvasDimensions,
   LeftTab,
   SafeZoneMode,
+  SpeechSegment,
   SubtitleCue,
+  TranscriptSegment,
   WhisperModelId,
 } from '../types/editor';
+import {
+  analyzeAudioCleanupOnServer,
+  buildSpeechSegmentsFromSilences,
+  detectFillerMarks,
+  subtractCutsFromSegments,
+} from '../utils/audioCleanup';
 import { getOrExtractAudioProfile } from '../utils/audioProfile';
 import { computeTrackedPlacement, renderEditorFrame } from '../utils/canvasRenderer';
 import {
@@ -137,6 +145,9 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
     const [waveformLoading, setWaveformLoading] = useState(false);
     const audioProfileRef = useRef<AudioProfile | null>(null);
     audioProfileRef.current = audioProfile;
+    // N3: última transcripción con palabras (para detectar muletillas)
+    const [cleanupAnalyzing, setCleanupAnalyzing] = useState(false);
+    const lastTranscriptRef = useRef<TranscriptSegment[]>([]);
 
     const [canUndo, setCanUndo] = useState(false);
     const [canRedo, setCanRedo] = useState(false);
@@ -770,6 +781,197 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
       );
     }, [activeProject?.mediaBlobId, mediaUrl, onNotify, recomputeSilencesFromProfile]);
 
+    // ---------- N3: Limpieza automática de audio en un clic ----------
+    const getTranscriptForFillers = useCallback((): TranscriptSegment[] => {
+      if (lastTranscriptRef.current.length > 0) return lastTranscriptRef.current;
+      return activeProject?.transcript ?? [];
+    }, [activeProject]);
+
+    const handleDetectFillers = useCallback(() => {
+      const s = settingsRef.current;
+      const transcript = getTranscriptForFillers();
+      if (!transcript || transcript.length === 0) {
+        onNotify('Transcribe primero el audio para detectar muletillas');
+        return;
+      }
+      const marks = detectFillerMarks(transcript, s.fillerWords ?? '');
+      if (marks.length === 0) {
+        onNotify('No se detectaron muletillas en la transcripción');
+        setSettings((prev) => ({ ...prev, fillerMarks: [], fillerCutEnabled: false }));
+        return;
+      }
+      setSettings((prev) => {
+        const base =
+          prev.fillerBaseSegments && prev.fillerBaseSegments.length > 0
+            ? prev.fillerBaseSegments
+            : prev.speechSegments && prev.speechSegments.length > 0
+              ? prev.speechSegments
+              : [{ start: prev.trimStart, end: prev.trimEnd }];
+        const withCuts = subtractCutsFromSegments(
+          base,
+          marks.filter((m) => m.enabled)
+        );
+        return {
+          ...prev,
+          fillerMarks: marks,
+          fillerBaseSegments: base,
+          fillerCutEnabled: true,
+          silenceCutEnabled: true,
+          speechSegments: withCuts,
+        };
+      });
+      onNotify(
+        `${marks.length} muletillas sugeridas: revísalas en «Limpiar y apretar» y desactiva las que quieras conservar`
+      );
+    }, [getTranscriptForFillers, onNotify]);
+
+    const handleToggleFillerMark = useCallback((index: number, enabled: boolean) => {
+      setSettings((prev) => {
+        const marks = (prev.fillerMarks ?? []).map((m, i) =>
+          i === index ? { ...m, enabled } : m
+        );
+        const base =
+          prev.fillerBaseSegments && prev.fillerBaseSegments.length > 0
+            ? prev.fillerBaseSegments
+            : prev.speechSegments;
+        if (!base || base.length === 0) {
+          return { ...prev, fillerMarks: marks };
+        }
+        return {
+          ...prev,
+          fillerMarks: marks,
+          speechSegments: prev.fillerCutEnabled
+            ? subtractCutsFromSegments(
+                base,
+                marks.filter((m) => m.enabled)
+              )
+            : base,
+        };
+      });
+    }, []);
+
+    const handleRunAudioCleanup = useCallback(async () => {
+      if (!hasMediaRef.current && !isDemoRef.current) {
+        onNotify('Carga un video o el Clip Demo primero');
+        return;
+      }
+      const s = settingsRef.current;
+
+      if (isDemoRef.current) {
+        setSettings((prev) => ({
+          ...prev,
+          audioCleanupEnabled: true,
+          audioNormalizeEnabled: true,
+          audioDenoiseEnabled: true,
+        }));
+        onNotify(
+          'Limpieza activada para el Demo: nivelación y reducción de ruido se aplicarán al exportar con FFmpeg'
+        );
+        return;
+      }
+
+      const source = standaloneFileRef.current || mediaUrl;
+      if (!source) {
+        onNotify('No se encontró el archivo del video');
+        return;
+      }
+
+      setCleanupAnalyzing(true);
+      try {
+        // 1) Silencios con FFmpeg (silencedetect) + medición loudnorm en el servidor.
+        let baseSegments: SpeechSegment[] | null = null;
+        let measured = s.loudnormMeasured ?? null;
+        const analysis = await analyzeAudioCleanupOnServer(source, {
+          thresholdDb: s.silenceThresholdDb,
+          minSilenceSec: s.silenceMinSec,
+        });
+        if (analysis) {
+          baseSegments = buildSpeechSegmentsFromSilences(analysis.silences, s.trimStart, s.trimEnd, {
+            minSilenceSec: s.silenceMinSec,
+            keepSec: s.silencePaddingSec,
+          });
+          if (analysis.loudnorm) measured = analysis.loudnorm;
+        }
+
+        // 2) Respaldo: perfil de energía en el navegador (como «Detectar Silencios»).
+        if (!baseSegments) {
+          let prof = audioProfileRef.current;
+          if (!prof) {
+            setWaveformLoading(true);
+            try {
+              prof = await getOrExtractAudioProfile({
+                mediaBlobId: activeProject?.mediaBlobId ?? null,
+                source,
+                durationHint: durationRef.current || 12,
+                isDemo: false,
+                numBins: 360,
+              });
+              setAudioProfile(prof);
+            } finally {
+              setWaveformLoading(false);
+            }
+          }
+          if (prof && prof.energy20Hz.length > 0) {
+            baseSegments = recomputeSilencesFromProfile(prof, {
+              trimStart: s.trimStart,
+              trimEnd: s.trimEnd,
+              thresholdDb: s.silenceThresholdDb,
+              minSilenceSec: s.silenceMinSec,
+              paddingSec: s.silencePaddingSec,
+            });
+          }
+        }
+
+        if (!baseSegments || baseSegments.length === 0) {
+          onNotify('Este video no tiene pista de audio detectable');
+          return;
+        }
+
+        // 3) Muletillas sugeridas desde la transcripción (si la hay).
+        const marks = detectFillerMarks(getTranscriptForFillers(), s.fillerWords ?? '');
+        const finalSegments =
+          marks.length > 0
+            ? subtractCutsFromSegments(
+                baseSegments,
+                marks.filter((m) => m.enabled)
+              )
+            : baseSegments;
+
+        const rawDur = Math.max(0.1, s.trimEnd - s.trimStart);
+        const keptDur = finalSegments.reduce(
+          (acc, seg) => acc + Math.max(0, seg.end - seg.start),
+          0
+        );
+        const saved = Math.max(0, rawDur - keptDur);
+
+        setSettings((prev) => ({
+          ...prev,
+          audioCleanupEnabled: true,
+          audioNormalizeEnabled: true,
+          audioDenoiseEnabled: true,
+          loudnormMeasured: measured,
+          silenceCutEnabled: true,
+          speechSegments: finalSegments,
+          fillerBaseSegments: baseSegments as SpeechSegment[],
+          fillerMarks: marks,
+          fillerCutEnabled: marks.length > 0,
+        }));
+        onNotify(
+          `Limpieza lista: -${saved.toFixed(1)}s de silencios${
+            marks.length > 0 ? ` · ${marks.length} muletillas sugeridas` : ''
+          } · volumen nivelado al exportar`
+        );
+      } finally {
+        setCleanupAnalyzing(false);
+      }
+    }, [
+      activeProject?.mediaBlobId,
+      getTranscriptForFillers,
+      mediaUrl,
+      onNotify,
+      recomputeSilencesFromProfile,
+    ]);
+
     const updateSetting = useCallback(
       <K extends keyof EditorSettings>(key: K, value: EditorSettings[K]) => {
         setSettings((prev) => {
@@ -795,6 +997,21 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
               minSilenceSec: next.silenceMinSec,
               paddingSec: next.silencePaddingSec,
             });
+          }
+          if (key === 'fillerCutEnabled') {
+            const base =
+              next.fillerBaseSegments && next.fillerBaseSegments.length > 0
+                ? next.fillerBaseSegments
+                : null;
+            if (base) {
+              next.speechSegments = value
+                ? subtractCutsFromSegments(
+                    base,
+                    (next.fillerMarks ?? []).filter((m) => m.enabled)
+                  )
+                : base;
+              if (value) next.silenceCutEnabled = true;
+            }
           }
           return next;
         });
@@ -938,6 +1155,7 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
             },
           });
           if (res.subtitles.length > 0) {
+            lastTranscriptRef.current = res.transcript ?? [];
             setSubtitles(res.subtitles);
             setSelectedSubId(res.subtitles[0].id);
             onNotify(`${res.subtitles.length} bloques generados (${res.engineUsed})`);
@@ -1804,6 +2022,10 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
             onTrimStartChange={handleTrimStartChange}
             onTrimEndChange={handleTrimEndChange}
             onDetectSilences={handleDetectSilences}
+            onRunAudioCleanup={handleRunAudioCleanup}
+            cleanupAnalyzing={cleanupAnalyzing}
+            onDetectFillers={handleDetectFillers}
+            onToggleFillerMark={handleToggleFillerMark}
             onResetFraming={() =>
               setSettings((prev) => ({ ...prev, zoom: 100, panX: 0, panY: 0 }))
             }
