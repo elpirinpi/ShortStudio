@@ -2745,7 +2745,7 @@ export async function startServer(options: StartServerOptions = {}) {
         sfxVolume: Number(s.finishSfxVolume ?? 35),
         sfxTimes: Array.isArray(s.finishSfxTimes) ? s.finishSfxTimes : [],
         keywordHighlightEnabled: s.finishKeywordsEnabled !== false,
-        keywords: typeof s.finishKeywords === 'string' ? s.finishKeywords : '',
+        keywords: typeof s.finishKeywords === 'string' ? [s.finishKeywords] : [],
       });
 
       // Resolve jump-cut speech segments safely
