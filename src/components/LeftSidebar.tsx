@@ -698,6 +698,143 @@ export function LeftSidebar({
             </section>
 
             <section className="p-4 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xs font-semibold text-slate-200">
+                  Terminar mi clip (Acabado)
+                </h2>
+                <input
+                  type="checkbox"
+                  checked={Boolean(settings.finishClipEnabled)}
+                  onChange={(e) => onUpdateSetting('finishClipEnabled', e.target.checked)}
+                  className="w-4 h-4 accent-fuchsia-500 cursor-pointer"
+                  aria-label="Aplicar el acabado automático al exportar"
+                />
+              </div>
+              <p className="text-[11px] leading-relaxed text-slate-400">
+                Acabado opcional al exportar con FFmpeg: zoom suave en los
+                momentos de énfasis, palabras clave resaltadas, música que
+                baja sola cuando hablas y un efecto sutil en los cortes.
+                Nada se aplica si no lo activas, y el proyecto no se toca.
+              </p>
+
+              <label className="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
+                <span>Zoom suave en momentos de énfasis</span>
+                <input
+                  type="checkbox"
+                  checked={settings.finishZoomEnabled !== false}
+                  onChange={(e) => onUpdateSetting('finishZoomEnabled', e.target.checked)}
+                  className="w-4 h-4 accent-fuchsia-500 cursor-pointer"
+                />
+              </label>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-300">Intensidad del zoom</span>
+                  <span className="font-mono-tabular text-fuchsia-400">
+                    {settings.finishZoomIntensity ?? 115}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={105}
+                  max={140}
+                  step={5}
+                  value={settings.finishZoomIntensity ?? 115}
+                  onChange={(e) =>
+                    onUpdateSetting('finishZoomIntensity', Number(e.target.value))
+                  }
+                />
+              </div>
+
+              <label className="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
+                <span>Resaltar palabras clave en subtítulos</span>
+                <input
+                  type="checkbox"
+                  checked={settings.finishKeywordsEnabled !== false}
+                  onChange={(e) =>
+                    onUpdateSetting('finishKeywordsEnabled', e.target.checked)
+                  }
+                  className="w-4 h-4 accent-fuchsia-500 cursor-pointer"
+                />
+              </label>
+              <input
+                type="text"
+                value={settings.finishKeywords ?? ''}
+                onChange={(e) => onUpdateSetting('finishKeywords', e.target.value)}
+                placeholder="gratis, secreto, error, dinero..."
+                className="w-full bg-[#0b0d12] border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-fuchsia-500/70"
+                aria-label="Palabras clave para resaltar y marcar el énfasis (separadas por comas)"
+              />
+              <p className="text-[11px] leading-relaxed text-slate-500">
+                Esas palabras se pintan con el color de resaltado y marcan
+                dónde entra el zoom. Si lo dejas vacío, el zoom usa las
+                apariciones de tu cara.
+              </p>
+
+              <label className="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
+                <span>La música baja cuando hay voz (ducking)</span>
+                <input
+                  type="checkbox"
+                  checked={settings.finishDuckingEnabled !== false}
+                  onChange={(e) =>
+                    onUpdateSetting('finishDuckingEnabled', e.target.checked)
+                  }
+                  className="w-4 h-4 accent-fuchsia-500 cursor-pointer"
+                />
+              </label>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-300">Cuánto baja la música</span>
+                  <span className="font-mono-tabular text-fuchsia-400">
+                    {settings.finishDuckingAmount ?? 60}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={settings.finishDuckingAmount ?? 60}
+                  onChange={(e) =>
+                    onUpdateSetting('finishDuckingAmount', Number(e.target.value))
+                  }
+                />
+              </div>
+              <p className="text-[11px] leading-relaxed text-slate-500">
+                Se aplica a la música de fondo que cargues desde tu PC; el
+                volumen general de la música sigue siendo el de su control
+                de siempre. Sin música cargada no hace nada.
+              </p>
+
+              <label className="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
+                <span>Efecto sutil en los cambios de escena</span>
+                <input
+                  type="checkbox"
+                  checked={Boolean(settings.finishSfxEnabled)}
+                  onChange={(e) => onUpdateSetting('finishSfxEnabled', e.target.checked)}
+                  className="w-4 h-4 accent-fuchsia-500 cursor-pointer"
+                />
+              </label>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-300">Volumen del efecto</span>
+                  <span className="font-mono-tabular text-fuchsia-400">
+                    {settings.finishSfxVolume ?? 35}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={settings.finishSfxVolume ?? 35}
+                  onChange={(e) =>
+                    onUpdateSetting('finishSfxVolume', Number(e.target.value))
+                  }
+                />
+              </div>
+            </section>
+
+            <section className="p-4 flex flex-col gap-3">
               <h2 className="text-xs font-semibold text-slate-200">Barra de Retención</h2>
               <label className="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
                 <span>Mostrar barra de progreso</span>

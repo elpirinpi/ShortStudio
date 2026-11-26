@@ -43,6 +43,10 @@ import {
 } from '../utils/faceTracker';
 import { transcribeVideoRange } from '../utils/localAi';
 import {
+  computeFinishSfxTimes,
+  computeFinishZoomMoments,
+} from '../utils/finishClip';
+import {
   exportClipOffline,
   exportClipWithFfmpeg,
   transcodeVideoViaMediaJob,
@@ -1543,6 +1547,21 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
         setExportProgress(0);
         setExportStatus(`Preparando renderizado exacto ${resLabel} (30fps)...`);
 
+        // N4 — «Terminar mi clip»: si está activo, los momentos de zoom y
+        // los instantes de efecto se calculan sobre una COPIA de los
+        // ajustes; el proyecto original no se modifica.
+        const baseSettings = settingsRef.current;
+        const exportSettings = baseSettings.finishClipEnabled
+          ? {
+              ...baseSettings,
+              finishZoomMoments: computeFinishZoomMoments(
+                baseSettings,
+                subtitlesRef.current
+              ),
+              finishSfxTimes: computeFinishSfxTimes(baseSettings),
+            }
+          : baseSettings;
+
         // Ultra-fast native FFmpeg backend path (zero browser frame-by-frame decode/seek)
         if (formatChoice === 'ffmpeg-fast') {
           const ffmpegResult = await exportClipWithFfmpeg({
@@ -1552,7 +1571,7 @@ export const ClipEditorWorkspace = forwardRef<ClipEditorHandle, ClipEditorWorksp
             bgmUrl: bgmUrlRef.current,
             bgmBlob: bgmFileRef.current,
             hasBgm: hasBgmRef.current,
-            settings: settingsRef.current,
+            settings: exportSettings,
             subtitles: subtitlesRef.current,
             signal,
             onProgress: (pct, msg) => {

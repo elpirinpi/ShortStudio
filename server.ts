@@ -20,6 +20,16 @@ import {
   parseLoudnormMeasured,
   parseSilenceDetectOutput,
 } from './server/audioCleanup.ts';
+import {
+  buildDuckingFilter,
+  buildEmphasisZoomFilter,
+  buildSfxSourceFilters,
+  finishDuckingActive,
+  finishSfxActive,
+  finishZoomActive,
+  highlightKeywordsInCues,
+  normalizeFinishClipOptions,
+} from './server/finishClip.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -2673,6 +2683,18 @@ export async function startServer(options: StartServerOptions = {}) {
             inputThresh: number;
             targetOffset: number;
           } | null;
+          // N4 — «Terminar mi clip» (acabado opcional al exportar)
+          finishClipEnabled?: boolean;
+          finishZoomEnabled?: boolean;
+          finishZoomIntensity?: number;
+          finishZoomMoments?: Array<{ start: number; end: number }>;
+          finishKeywordsEnabled?: boolean;
+          finishKeywords?: string;
+          finishDuckingEnabled?: boolean;
+          finishDuckingAmount?: number;
+          finishSfxEnabled?: boolean;
+          finishSfxVolume?: number;
+          finishSfxTimes?: number[];
           transitionIn?: 'none' | 'fade' | 'zoom-punch' | 'slide-up';
           hookEnabled?: boolean;
           hookText?: string;
@@ -2709,6 +2731,22 @@ export async function startServer(options: StartServerOptions = {}) {
       const volVideo = Math.max(0, Math.min(200, Number(s.volVideo ?? 100)));
       const volBgm = Math.max(0, Math.min(200, Number(s.volBgm ?? 35)));
       const hasBgmFile = fs.existsSync(bgmPath) && fs.statSync(bgmPath).size > 0 && volBgm > 0;
+
+      // N4 — «Terminar mi clip»: opciones normalizadas. Si la usuaria no lo
+      // activó, enabled=false y no se aplica ningún efecto de acabado.
+      const finishOpts = normalizeFinishClipOptions({
+        enabled: Boolean(s.finishClipEnabled),
+        zoomEnabled: s.finishZoomEnabled !== false,
+        zoomIntensity: Number(s.finishZoomIntensity ?? 115),
+        zoomMoments: Array.isArray(s.finishZoomMoments) ? s.finishZoomMoments : [],
+        duckingEnabled: s.finishDuckingEnabled !== false,
+        duckingAmount: Number(s.finishDuckingAmount ?? 60),
+        sfxEnabled: Boolean(s.finishSfxEnabled),
+        sfxVolume: Number(s.finishSfxVolume ?? 35),
+        sfxTimes: Array.isArray(s.finishSfxTimes) ? s.finishSfxTimes : [],
+        keywordHighlightEnabled: s.finishKeywordsEnabled !== false,
+        keywords: typeof s.finishKeywords === 'string' ? s.finishKeywords : '',
+      });
 
       // Resolve jump-cut speech segments safely
       let segments: Array<{ start: number; end: number }> = [{ start: trimStart, end: trimEnd }];
@@ -2753,7 +2791,15 @@ export async function startServer(options: StartServerOptions = {}) {
         });
       });
 
-      const cues = Array.isArray(body.subtitles) ? body.subtitles : [];
+      const rawCues = Array.isArray(body.subtitles) ? body.subtitles : [];
+      // N4 — Resaltado de palabras clave en los subtítulos (sintaxis *...*
+      // que ya entiende el constructor ASS), solo si la usuaria lo activó.
+      const cues =
+        finishOpts.enabled &&
+        finishOpts.keywordHighlightEnabled &&
+        finishOpts.keywords.length > 0
+          ? highlightKeywordsInCues(rawCues, finishOpts.keywords)
+          : rawCues;
       const hasHook = Boolean(s.hookEnabled && s.hookText?.trim());
       const hasAssOverlay = cues.length > 0 || hasHook;
 
@@ -2880,6 +2926,15 @@ export async function startServer(options: StartServerOptions = {}) {
         curVLabel = 'vtrans';
       }
 
+      // N4 — Zoom suave de énfasis en los momentos calculados por el
+      // editor. Va antes de los subtítulos para que el texto no se mueva.
+      if (finishZoomActive(finishOpts)) {
+        filters.push(
+          buildEmphasisZoomFilter(finishOpts, W, H, curVLabel, 'vzoom')
+        );
+        curVLabel = 'vzoom';
+      }
+
       if (hasAssOverlay) {
         filters.push(`[${curVLabel}]ass=subs.ass[vsub]`);
         curVLabel = 'vsub';
@@ -2966,14 +3021,37 @@ export async function startServer(options: StartServerOptions = {}) {
         );
       }
 
-      if (useVideoAudio && hasBgmFile) {
-        filters.push('[va][ba]amix=inputs=2:duration=shortest:normalize=0[aout]');
+      // Mezcla principal hacia [amain]; la salida final [aout] se cierra
+      // más abajo (efecto de sonido N4 y re-muestreo común).
+      // N4 — Ducking: la música cargada por la usuaria baja sola cuando
+      // hay voz, usando la voz como señal de control (sidechaincompress).
+      const duckingOn =
+        finishDuckingActive(finishOpts) && useVideoAudio && hasBgmFile;
+      if (useVideoAudio && hasBgmFile && duckingOn) {
+        filters.push('[va]asplit=2[vaMix][vaKey]');
+        filters.push(buildDuckingFilter(finishOpts, 'ba', 'vaKey', 'baDuck'));
+        filters.push('[vaMix][baDuck]amix=inputs=2:duration=shortest:normalize=0[amain]');
+      } else if (useVideoAudio && hasBgmFile) {
+        filters.push('[va][ba]amix=inputs=2:duration=shortest:normalize=0[amain]');
       } else if (useVideoAudio) {
-        filters.push('[va]aresample=async=1:first_pts=0[aout]');
+        filters.push('[va]anull[amain]');
       } else if (hasBgmFile) {
-        filters.push('[ba]aresample=async=1:first_pts=0[aout]');
+        filters.push('[ba]anull[amain]');
       } else {
-        filters.push(`anullsrc=r=48000:cl=stereo:d=${outDur.toFixed(3)}[aout]`);
+        filters.push(`anullsrc=r=48000:cl=stereo:d=${outDur.toFixed(3)}[amain]`);
+      }
+
+      // N4 — Efecto de sonido sutil en los cambios de escena (cortes entre
+      // bloques de voz), sintetizado por FFmpeg y solo si se activó.
+      if (finishSfxActive(finishOpts)) {
+        const sfx = buildSfxSourceFilters(finishOpts);
+        filters.push(...sfx.filters);
+        filters.push(
+          `[amain]${sfx.labels.join('')}amix=inputs=${sfx.labels.length + 1}:duration=first:normalize=0[amixout]`
+        );
+        filters.push('[amixout]aresample=async=1:first_pts=0[aout]');
+      } else {
+        filters.push('[amain]aresample=async=1:first_pts=0[aout]');
       }
 
       const ffmpegArgs: string[] = ['-y'];
